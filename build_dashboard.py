@@ -192,6 +192,14 @@ def collect_models(queue_status):
     """Return list of model items with iterations."""
     base = os.path.join(PACK, 'models')
     items = []
+    # live activity signal: a model actively being worked is in_progress
+    live_model, live_phase = '', ''
+    try:
+        live = json.load(open(os.path.join(HIDDEN, 'modeling-live-status.json')))
+        live_model = live.get('model', '')
+        live_phase = live.get('phase', '')
+    except Exception:
+        pass
     if not os.path.isdir(base):
         return items
     for mid in sorted(os.listdir(base)):
@@ -280,22 +288,20 @@ def collect_models(queue_status):
                         felix_blocked = True
             except Exception:
                 pass
-        # Status truth: pipeline queue first, then files.
+        # Status truth: live activity first, then pipeline queue, then files.
+        # - live status says this model is being worked -> in_progress
         # - queue says building/judging/fixing -> in_progress
         # - queue says complete -> finished
-        # - not in queue but has GLB: finished UNLESS Felix-flagged defect
-        #   is unresolved (then in_progress — needs a fix rev)
-        # - v2 model-meta.json with 3 passing judges also means finished
-        # A model with a GLB is finished UNLESS:
-        #  - the pipeline queue has it as actively being worked, or
-        #  - there's an unresolved Felix-flagged defect against it.
-        # Build scripts/rev folders alone are history, not activity.
+        # - GLB + model-meta.json with 3 passing judges -> finished
+        # - GLB alone just means a build exists — it may be mid-judging
+        # - unresolved Felix-flagged defect -> in_progress (needs a fix rev)
         qs = queue_status.get(mid, '')
-        if qs in ('building', 'judging', 'fixing', 'rendering', 'in_progress'):
+        live_active = (live_model == mid and live_phase not in ('', 'idle'))
+        if live_active or qs in ('building', 'judging', 'fixing', 'rendering', 'in_progress'):
             status = 'in_progress'
         elif felix_blocked:
             status = 'in_progress'
-        elif qs == 'complete' or (glbs and meta_ok) or glbs:
+        elif qs == 'complete' or (glbs and meta_ok):
             status = 'finished'
         elif has_build_activity:
             status = 'in_progress'
