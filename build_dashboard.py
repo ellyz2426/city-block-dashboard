@@ -630,7 +630,6 @@ const scene=new THREE.Scene();scene.background=new THREE.Color(0x0d1117);
 const cam=new THREE.PerspectiveCamera(45,el.clientWidth/420,0.01,100);
 cam.position.set(3.2,2.2,3.2);
 const ctl=new OrbitControls(cam,renderer.domElement);
-ctl.autoRotate=true;ctl.autoRotateSpeed=1.2;
 scene.add(new THREE.HemisphereLight(0xffffff,0x334455,1.1));
 const d=new THREE.DirectionalLight(0xfff2dd,2.2);d.position.set(4,6,3);scene.add(d);
 const d2=new THREE.DirectionalLight(0x88aaff,0.7);d2.position.set(-4,3,-3);scene.add(d2);
