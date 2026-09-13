@@ -503,7 +503,7 @@ def mod_card(it):
     thumb = None
     if it['revs']:
         r = it['revs'][-1]
-        tp = f'assets/models/{it["id"]}/{r["rev"]}/thumb_front.jpg'
+        tp = f'assets/models/{it["id"]}/renders/{r["rev"]}/thumb_front.jpg'
         if os.path.exists(os.path.join(OUT, tp)):
             thumb = tp
     img = f'<img loading="lazy" src="{thumb}">' if thumb else '<div style="aspect-ratio:1.2;background:#000"></div>'
@@ -637,13 +637,13 @@ def render_model(it):
         cards = []
         for v in VIEWS:
             if v in r['renders']:
-                src = f'../assets/models/{mid}/{r["rev"]}/{v}.png'
+                src = f'../assets/models/{mid}/renders/{r["rev"]}/{v}.png'
                 cards.append(f'<div class="view"><img loading="lazy" src="{src}">'
                              f'<div class="lbl"><span>{VIEW_LABELS[v]}</span></div></div>')
         # also include any non-canonical pngs
         for name, _ in r['renders'].items():
             if name not in VIEWS:
-                src = f'../assets/models/{mid}/{r["rev"]}/{name}.png'
+                src = f'../assets/models/{mid}/renders/{r["rev"]}/{name}.png'
                 cards.append(f'<div class="view"><img loading="lazy" src="{src}">'
                              f'<div class="lbl"><span>{esc(name)}</span></div></div>')
         rev_html.append(f'<div class="rev"><h3>rev {esc(r["rev"])} '
