@@ -280,13 +280,27 @@ def collect_models(queue_status):
                         felix_blocked = True
             except Exception:
                 pass
-        # in_progress if it's the pipeline's current model or has recent activity
-        if glbs and meta_ok and not felix_blocked:
+        # Status truth: pipeline queue first, then files.
+        # - queue says building/judging/fixing -> in_progress
+        # - queue says complete -> finished
+        # - not in queue but has GLB: finished UNLESS Felix-flagged defect
+        #   is unresolved (then in_progress — needs a fix rev)
+        # - v2 model-meta.json with 3 passing judges also means finished
+        qs = queue_status.get(mid, '')
+        if qs in ('building', 'judging', 'fixing', 'rendering', 'in_progress'):
+            status = 'in_progress'
+        elif qs == 'complete':
+            status = 'finished'
+        elif felix_blocked:
+            status = 'in_progress'
+        elif (glbs and meta_ok) or (glbs and not has_build_activity):
+            # GLB exists and either v2 judges pass or no active build dirs
+            # (legacy complete from pre-v2 manual builds)
             status = 'finished'
         elif has_build_activity:
             status = 'in_progress'
         else:
-            status = queue_status.get(mid, 'pending')
+            status = qs or 'pending'
         all_pass = (scores and all(v[0] == 'PASS' for v in scores.values())
                     and len(scores) == 8)
         items.append({
