@@ -1,0 +1,236 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>35-traffic-light &mdash; asset review</title><style>
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;
+--muted:#8b949e;--green:#3fb950;--yellow:#d29922;--red:#f85149;--blue:#58a6ff}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--text);
+font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;
+padding:0 0 60px;line-height:1.45}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+header.top{border-bottom:1px solid var(--border);padding:16px;margin-bottom:16px;
+display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:18px;margin:28px 0 12px;
+border-bottom:1px solid var(--border);padding-bottom:6px}
+.sub{color:var(--muted);font-size:13px}
+.pipes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+@media(max-width:640px){.pipes{grid-template-columns:1fr}}
+.pipe{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px}
+.pipe .name{font-weight:700;margin-bottom:6px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.dot.live{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot.idle{background:var(--muted)}
+.kv{font-size:13px;color:var(--muted);margin:2px 0}.kv b{color:var(--text);font-weight:600}
+/* entry list */
+.entry{display:flex;gap:14px;background:var(--card);border:1px solid var(--border);
+border-radius:12px;padding:12px;margin:10px 0;text-decoration:none;color:var(--text)}
+.entry:hover{border-color:var(--blue)}
+.entry img{width:120px;height:100px;object-fit:cover;border-radius:8px;background:#000;flex:none}
+.entry .info{flex:1;min-width:0}
+.entry .id{font-weight:700;font-size:16px}
+.entry .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.stages{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.stage{font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid var(--border)}
+.stage.ok{background:rgba(63,185,80,.15);color:var(--green);border-color:transparent}
+.stage.work{background:rgba(210,153,34,.15);color:var(--yellow);border-color:transparent}
+.stage.idle{color:var(--muted)}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:12px;margin-top:4px}
+.badge.ok{background:rgba(63,185,80,.15);color:var(--green)}
+.badge.work{background:rgba(210,153,34,.15);color:var(--yellow)}
+.badge.idle{background:rgba(139,148,158,.15);color:var(--muted)}
+/* feedback button */
+.fbbox{background:var(--card);border:1px solid var(--border);border-radius:10px;
+padding:12px;margin:12px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.btn{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;
+font-size:15px;font-weight:700;cursor:pointer}
+.btn:disabled{background:var(--border);color:var(--muted);cursor:default}
+.btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
+.count{background:var(--yellow);color:#000;font-weight:700;border-radius:12px;
+padding:2px 10px;font-size:13px}
+/* detail page */
+.back{display:inline-block;margin:12px 0;color:var(--blue);text-decoration:none}
+#viewer{width:100%;height:420px;background:#000;border-radius:10px;border:1px solid var(--border)}
+.viewtabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.viewtab{background:var(--card);border:1px solid var(--border);color:var(--text);
+border-radius:8px;padding:8px 14px;font-size:14px;cursor:pointer}
+.viewtab.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:700px){.compare{grid-template-columns:1fr}}
+.imgwrap{position:relative;background:#000;border-radius:10px;overflow:hidden;
+border:1px solid var(--border);touch-action:pan-y}
+.imgwrap img{width:100%;display:block;user-select:none;-webkit-user-select:none}
+.imglbl{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.65);color:#fff;
+font-size:12px;padding:3px 10px;border-radius:10px;pointer-events:none}
+.pin{position:absolute;width:26px;height:26px;border-radius:50%;background:var(--red);
+color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;
+justify-content:center;transform:translate(-50%,-50%);cursor:pointer;
+border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.6);z-index:5}
+.pinedit{position:absolute;z-index:20;background:var(--card);border:1px solid var(--blue);
+border-radius:10px;padding:10px;width:240px;box-shadow:0 4px 20px rgba(0,0,0,.6)}
+.pinedit textarea{width:100%;height:70px;background:var(--bg);color:var(--text);
+border:1px solid var(--border);border-radius:6px;padding:6px;font-size:13px;resize:vertical}
+.pinedit .row{display:flex;gap:8px;margin-top:8px}
+.pinedit button{flex:1;padding:6px;border-radius:6px;border:1px solid var(--border);
+background:var(--bg);color:var(--text);cursor:pointer;font-size:13px}
+.pinedit button.save{background:var(--blue);border-color:var(--blue);color:#fff}
+.pinedit button.del{background:transparent;color:var(--red);border-color:var(--red)}
+.reviewbar{display:flex;gap:10px;align-items:center;margin:12px 0;flex-wrap:wrap}
+.toggle{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.toggle .pill{width:44px;height:24px;border-radius:12px;background:var(--border);position:relative}
+.toggle.on .pill{background:var(--green)}
+.toggle .pill::after{content:'';position:absolute;width:18px;height:18px;border-radius:50%;
+background:#fff;top:3px;left:3px;transition:left .15s}
+.toggle.on .pill::after{left:23px}
+.hint{font-size:13px;color:var(--muted)}
+.notes{margin:16px 0}
+.noteitem{background:var(--card);border:1px solid var(--border);border-radius:10px;
+padding:10px 12px;margin:8px 0;font-size:14px}
+.noteitem .nmeta{font-size:12px;color:var(--muted);margin-bottom:4px}
+.noteitem .nmeta a{color:var(--blue)}
+.noteitem button{background:transparent;border:1px solid var(--red);color:var(--red);
+border-radius:6px;padding:2px 10px;font-size:12px;cursor:pointer;float:right}
+table.stats{border-collapse:collapse;font-size:13px;margin:8px 0}
+table.stats td{padding:3px 12px 3px 0;color:var(--muted)}
+table.stats td:first-child{color:var(--text)}
+.note{font-size:12px;color:var(--muted)}
+#dumpbox{width:100%;height:180px;background:var(--bg);color:var(--text);
+border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;display:none}
+</style></head>
+<body data-asset="35-traffic-light" data-rev="—"><div class="wrap">
+<a class="back" href="../index.html">&larr; all assets</a>
+<h1>35-traffic-light</h1><div class="sub">Traffic Light</div>
+<div class="stages" style="margin:10px 0"><span class="stage ok">Schematics ✓</span><span class="stage idle">3D not started</span></div>
+<div class="kv">last updated <b>2026-09-13 04:55 PDT</b> &middot; <span id="notesCount">0</span> review notes on this asset</div>
+
+<h2 id="review">Review &mdash; render vs schematic</h2>
+<div class="reviewbar">
+<div class="toggle on" id="reviewToggle"><div class="pill"></div><span>Review mode</span></div>
+<span class="hint" id="reviewHint">Review mode ON &mdash; right-click (or long-press) either image to drop a pin and leave a note.</span>
+</div>
+<div class="viewtabs"><button class="viewtab" data-view="front">Front</button><button class="viewtab" data-view="back">Back</button><button class="viewtab" data-view="left">Left</button><button class="viewtab" data-view="right">Right</button><button class="viewtab" data-view="top">Top</button><button class="viewtab" data-view="bottom">Bottom</button><button class="viewtab" data-view="angle-front-right">Angle FR</button><button class="viewtab" data-view="angle-back-left">Angle BL</button></div>
+<div class="compare">
+<div class="imgwrap" id="wrap-render"><img alt="3D render"><div class="imglbl">3D render &middot; —</div>
+<div class="nonimg" style="display:none;min-height:200px;align-items:center;justify-content:center;color:var(--muted)">no render for this view yet</div></div>
+<div class="imgwrap" id="wrap-schematic"><img alt="schematic"><div class="imglbl">schematic</div>
+<div class="nonimg" style="display:none;min-height:200px;align-items:center;justify-content:center;color:var(--muted)">no schematic for this view</div></div>
+</div>
+<h2>Notes on this asset</h2>
+<div class="notes" id="notesList"></div>
+</div>
+<script>var VIEWS_DATA={"front": {"render": null, "schematic": "../assets/schematics/35-traffic-light/front.jpg"}, "back": {"render": null, "schematic": "../assets/schematics/35-traffic-light/back.jpg"}, "left": {"render": null, "schematic": "../assets/schematics/35-traffic-light/left.jpg"}, "right": {"render": null, "schematic": "../assets/schematics/35-traffic-light/right.jpg"}, "top": {"render": null, "schematic": "../assets/schematics/35-traffic-light/top.jpg"}, "bottom": {"render": null, "schematic": "../assets/schematics/35-traffic-light/bottom.jpg"}, "angle-front-right": {"render": null, "schematic": "../assets/schematics/35-traffic-light/angle-front-right.jpg"}, "angle-back-left": {"render": null, "schematic": "../assets/schematics/35-traffic-light/angle-back-left.jpg"}};</script>
+<script>
+(function(){
+var KEY='cb_feedback_v1';
+var ASSET=document.body.dataset.asset, REV=document.body.dataset.rev;
+function loadFB(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
+function saveFB(a){try{localStorage.setItem(KEY,JSON.stringify(a))}catch(e){}}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+var view='front', reviewOn=true, wraps={};
+function $(id){return document.getElementById(id)}
+function setView(v){
+  view=v;
+  document.querySelectorAll('.viewtab').forEach(function(b){b.classList.toggle('active',b.dataset.view===v)});
+  var d=VIEWS_DATA[v]||{};
+  setImg('render',d.render); setImg('schematic',d.schematic);
+  renderPins(); renderNotes();
+}
+function setImg(side,src){
+  var w=wraps[side], img=w.querySelector('img'), none=w.querySelector('.nonimg');
+  w.querySelectorAll('.pin,.pinedit').forEach(function(e){e.remove()});
+  if(src){img.style.display='block';img.src=src;if(none)none.style.display='none';}
+  else{img.style.display='none';if(none)none.style.display='flex';}
+}
+function pinsFor(v){return loadFB().filter(function(n){return n.asset===ASSET&&n.view===v})}
+function renderPins(){
+  ['render','schematic'].forEach(function(side){
+    var w=wraps[side];
+    w.querySelectorAll('.pin,.pinedit').forEach(function(e){e.remove()});
+    pinsFor(view).filter(function(n){return n.side===side}).forEach(function(n,i){
+      var p=document.createElement('div');p.className='pin';p.textContent=(i+1);
+      p.style.left=(n.x*100)+'%';p.style.top=(n.y*100)+'%';p.title=n.text;
+      p.addEventListener('click',function(ev){ev.stopPropagation();openEditor(w,n);});
+      w.appendChild(p);
+    });
+  });
+}
+function openEditor(w,existing){
+  w.querySelectorAll('.pinedit').forEach(function(e){e.remove()});
+  var d=document.createElement('div');d.className='pinedit';
+  var r=w.getBoundingClientRect();
+  d.style.left='50%';d.style.top='50%';d.style.transform='translate(-50%,-50%)';
+  var ta=document.createElement('textarea');
+  ta.placeholder='What should change here?';ta.value=existing?existing.text:'';
+  var row=document.createElement('div');row.className='row';
+  var sv=document.createElement('button');sv.className='save';sv.textContent=existing?'Update':'Save note';
+  var del=document.createElement('button');del.className='del';del.textContent='Delete';
+  var ca=document.createElement('button');ca.textContent='Cancel';
+  sv.onclick=function(){
+    var t=ta.value.trim();if(!t){ta.focus();return;}
+    var all=loadFB();
+    if(existing){all.forEach(function(n){if(n.id===existing.id)n.text=t;});}
+    else{all.push({id:'n'+Date.now().toString(36)+Math.floor(Math.random()*1e4),
+      asset:ASSET,rev:REV,view:view,side:w.dataset.side,
+      x:pending.x,y:pending.y,text:t,
+      ts:new Date().toISOString().slice(0,16).replace('T',' ')});}
+    saveFB(all);d.remove();renderPins();renderNotes();
+  };
+  del.onclick=function(){
+    if(existing){saveFB(loadFB().filter(function(n){return n.id!==existing.id}));}
+    d.remove();renderPins();renderNotes();
+  };
+  ca.onclick=function(){d.remove()};
+  row.appendChild(sv);if(existing)row.appendChild(del);row.appendChild(ca);
+  d.appendChild(ta);d.appendChild(row);w.appendChild(d);ta.focus();
+}
+var pending=null, pressTimer=null;
+function armWrap(side){
+  var w=$('wrap-'+side);wraps[side]=w;w.dataset.side=side;
+  function dropAt(clientX,clientY){
+    if(!reviewOn)return;
+    var img=w.querySelector('img');if(!img||img.style.display==='none')return;
+    var r=img.getBoundingClientRect();
+    var x=(clientX-r.left)/r.width, y=(clientY-r.top)/r.height;
+    if(x<0||x>1||y<0||y>1)return;
+    pending={x:x,y:y};openEditor(w,null);
+  }
+  w.addEventListener('contextmenu',function(e){e.preventDefault();dropAt(e.clientX,e.clientY);});
+  w.addEventListener('touchstart',function(e){
+    pressTimer=setTimeout(function(){
+      var t=e.touches[0];dropAt(t.clientX,t.clientY);pressTimer=null;
+    },600);
+  },{passive:true});
+  ['touchend','touchmove'].forEach(function(ev){w.addEventListener(ev,function(){
+    if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}
+  },{passive:true});});
+}
+function renderNotes(){
+  var list=$('notesList');var ns=loadFB().filter(function(n){return n.asset===ASSET});
+  $('notesCount').textContent=ns.length;
+  if(!ns.length){list.innerHTML='<p class="hint">No notes yet. Turn on review mode and right-click (or long-press) any image to pin a note.</p>';return;}
+  ns.sort(function(a,b){return (a.ts<b.ts?-1:1)});
+  list.innerHTML='';
+  ns.forEach(function(n,i){
+    var d=document.createElement('div');d.className='noteitem';
+    var del=document.createElement('button');del.textContent='Delete';
+    del.onclick=function(){saveFB(loadFB().filter(function(x){return x.id!==n.id}));renderPins();renderNotes();};
+    var meta=document.createElement('div');meta.className='nmeta';
+    var a=document.createElement('a');a.href='#';a.textContent=n.view+' · '+n.side;
+    a.onclick=function(e){e.preventDefault();setView(n.view);window.scrollTo(0,$('review').offsetTop-10);};
+    meta.appendChild(a);
+    meta.insertAdjacentHTML('beforeend',' · rev '+esc(n.rev||'—')+' · x='+Math.round(n.x*100)+'% y='+Math.round(n.y*100)+'% · '+esc(n.ts));
+    var body=document.createElement('div');body.textContent=(i+1)+'. '+n.text;
+    d.appendChild(del);d.appendChild(meta);d.appendChild(body);list.appendChild(d);
+  });
+}
+document.querySelectorAll('.viewtab').forEach(function(b){
+  b.addEventListener('click',function(){setView(b.dataset.view)});
+});
+var tg=$('reviewToggle');
+tg.addEventListener('click',function(){reviewOn=!reviewOn;tg.classList.toggle('on',reviewOn);
+  $('reviewHint').textContent=reviewOn?
+   'Review mode ON — right-click (or long-press) either image to drop a pin and leave a note.':
+   'Review mode OFF — right-click works normally again.';});
+armWrap('render');armWrap('schematic');
+setView('front');
+})();
+</script>
+</body></html>

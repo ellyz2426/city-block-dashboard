@@ -1,10 +1,20 @@
 #!/usr/bin/env python3
-"""City-block 3D asset pipeline — observability dashboard generator.
+"""City-block 3D asset pipeline — observability + review dashboard generator.
 
-Reads pipeline data (schematics, models, pipeline state, live status) and
-generates a pure static HTML site for GitHub Pages. Idempotent: safe to run
-every 5 minutes; only writes files whose content changed, and exits early
-when the source fingerprint is unchanged.
+Generates a pure static HTML site for GitHub Pages. Idempotent: safe to run
+every 5 minutes; skips when the source fingerprint is unchanged.
+
+Layout (revamped 2026-09-13 per Felix):
+- index.html: ONE vertical scrollable list of entries (one per asset id).
+  Each entry shows its pipeline stages: Schematics -> 3D modeling -> Accepted.
+- entries/<id>.html: detail page per asset:
+  - 3D GLB viewport (no auto-rotate)
+  - Review mode: per view (front/back/...) the latest 3D render side-by-side
+    with the matching schematic; right-click (or long-press) either image to
+    drop a pin at that pixel and leave a comment. Pins persist in the
+    browser's localStorage.
+- "Copy feedback" button on the index: dumps all localStorage review notes
+  into the clipboard as paste-ready text for Kit, then clears local storage.
 
 Usage: python3 build_dashboard.py
 """
@@ -125,9 +135,11 @@ def esc(s):
 # ------------------------------------------------------------ collectors ---
 
 def collect_schematics():
-    """Return list of schematic items with metadata."""
+    """Return {id: schematic item} with metadata."""
     base = os.path.join(PACK, 'schematics')
-    items = []
+    items = {}
+    if not os.path.isdir(base):
+        return items
     for sid in sorted(os.listdir(base)):
         sdir = os.path.join(base, sid)
         if not os.path.isdir(sdir):
@@ -147,18 +159,15 @@ def collect_schematics():
         cs = os.path.join(sdir, 'contact-sheet.png')
         mtimes = [mtime_of(p) for p in views.values()]
         mtimes += [mtime_of(meta_path), mtime_of(cs)]
-        items.append({
+        items[sid] = {
             'id': sid,
             'title': meta.get('title', sid),
             'views': views,                       # view -> source path
             'scores': meta.get('scores', {}),
             'specs': meta.get('specs', []),
-            'style': meta.get('style', ''),
             'complete': len(views) == 8,
             'mtime': max(mtimes) if mtimes else 0,
-            'has_contact_sheet': os.path.exists(cs),
-            'contact_sheet_src': cs if os.path.exists(cs) else None,
-        })
+        }
     return items
 
 
@@ -175,7 +184,6 @@ def parse_scorecard(text):
         if 'Scorecard' in line:
             in_card = True
         elif in_card and not re.search(r'PASS|FAIL', line):
-            # allow one blank-ish continuation, else stop
             if line.strip() and not line.startswith((' ', '-', '\t')):
                 in_card = False
                 continue
@@ -189,10 +197,9 @@ def parse_scorecard(text):
 
 
 def collect_models(queue_status):
-    """Return list of model items with iterations."""
+    """Return {id: model item} with iterations."""
     base = os.path.join(PACK, 'models')
-    items = []
-    # live activity signal: a model actively being worked is in_progress
+    items = {}
     live_model, live_phase = '', ''
     try:
         live = json.load(open(os.path.join(HIDDEN, 'modeling-live-status.json')))
@@ -206,7 +213,6 @@ def collect_models(queue_status):
         mdir = os.path.join(base, mid)
         if not os.path.isdir(mdir):
             continue
-        # iterations = render rev folders
         rdir = os.path.join(mdir, 'renders')
         revs = []
         if os.path.isdir(rdir):
@@ -220,21 +226,18 @@ def collect_models(queue_status):
                     if os.path.exists(p):
                         pngs[v] = p
                 if not pngs:
-                    # any pngs at all?
                     for f in os.listdir(revp):
                         if f.endswith('.png'):
                             pngs[f[:-4]] = os.path.join(revp, f)
                 rev_mtime = max([mtime_of(p) for p in pngs.values()] or [0])
                 revs.append({'rev': rev, 'renders': pngs, 'mtime': rev_mtime})
         revs.sort(key=lambda r: r['mtime'])
-        # GLBs
         glbs = []
         for f in sorted(os.listdir(mdir)):
             if f.endswith('.glb'):
                 p = os.path.join(mdir, f)
                 glbs.append({'file': f, 'mtime': mtime_of(p), 'size': os.path.getsize(p)})
         glbs.sort(key=lambda g: g['mtime'])
-        # QA logs + judge scores
         scores = {}
         qa_logs = []
         for f in sorted(os.listdir(mdir)):
@@ -247,7 +250,6 @@ def collect_models(queue_status):
                         scores.setdefault(k, v)
                 except Exception:
                     pass
-        # mesh stats (latest)
         mesh = {}
         for f in sorted(os.listdir(mdir)):
             if f.startswith('mesh-stats') and f.endswith('.json'):
@@ -255,15 +257,11 @@ def collect_models(queue_status):
                     mesh = json.load(open(os.path.join(mdir, f)))
                 except Exception:
                     pass
-        # build scripts
         builds = [f for f in sorted(os.listdir(mdir))
                   if f.endswith('.py') and f.startswith('build')]
         mtimes = [mtime_of(os.path.join(mdir, f)) for f in os.listdir(mdir)]
         mtimes += [r['mtime'] for r in revs] + [g['mtime'] for g in glbs]
         has_build_activity = bool(builds) or bool(revs)
-        # A model is only 'finished' when it has a GLB AND a model-meta.json
-        # with 3 passing judges AND no unresolved Felix-flagged defects.
-        # A GLB alone just means a build exists — it may be mid-judging.
         meta_path = os.path.join(mdir, 'model-meta.json')
         meta_ok = False
         if os.path.exists(meta_path):
@@ -278,23 +276,14 @@ def collect_models(queue_status):
         felix_blocked = False
         for qf in qa_logs:
             try:
-                qfile = qf.get('file') if isinstance(qf, dict) else qf
-                content = open(os.path.join(mdir, qfile)).read()
+                content = open(os.path.join(mdir, qf['file'])).read()
                 if 'Felix-flagged defect' in content:
-                    # check if there's a resolution note after the last flag
                     last_flag = content.rfind('Felix-flagged defect')
                     after = content[last_flag:]
                     if 'resolved' not in after.lower() and 'fixed in' not in after.lower():
                         felix_blocked = True
             except Exception:
                 pass
-        # Status truth: live activity first, then pipeline queue, then files.
-        # - live status says this model is being worked -> in_progress
-        # - queue says building/judging/fixing -> in_progress
-        # - queue says complete -> finished
-        # - GLB + model-meta.json with 3 passing judges -> finished
-        # - GLB alone just means a build exists — it may be mid-judging
-        # - unresolved Felix-flagged defect -> in_progress (needs a fix rev)
         qs = queue_status.get(mid, '')
         live_active = (live_model == mid and live_phase not in ('', 'idle'))
         if live_active or qs in ('building', 'judging', 'fixing', 'rendering', 'in_progress'):
@@ -309,21 +298,22 @@ def collect_models(queue_status):
             status = qs or 'pending'
         all_pass = (scores and all(v[0] == 'PASS' for v in scores.values())
                     and len(scores) == 8)
-        items.append({
+        items[mid] = {
             'id': mid,
             'revs': revs,
+            'latest_rev': revs[-1]['rev'] if revs else None,
             'glbs': glbs,
             'latest_glb': glbs[-1] if glbs else None,
             'scores': scores,
             'all_judges_pass': bool(all_pass),
             'mesh': mesh,
-            'qa_logs': qa_logs,
             'builds': builds,
             'status': status,
             'queue_status': queue_status.get(mid, '—'),
+            'felix_blocked': felix_blocked,
             'mtime': max(mtimes) if mtimes else 0,
             'n_revs': len(revs),
-        })
+        }
     return items
 
 
@@ -358,23 +348,29 @@ def collect_pipelines():
 
 
 def fingerprint(schematics, models, pipelines):
-    """Hash of source mtimes+sizes+state so we can skip no-op runs."""
+    """Hash of source mtimes+sizes+state AND this script, so template
+    changes force regeneration."""
     h = hashlib.sha256()
+
     def feed(s):
         h.update(str(s).encode())
-    for it in schematics:
+    try:
+        feed(open(__file__, 'r', encoding='utf-8').read())
+    except Exception:
+        pass
+    for sid, it in schematics.items():
         for v, p in it['views'].items():
             st = os.stat(p)
             feed((p, st.st_mtime, st.st_size))
-        feed((it['id'], it['mtime']))
-    for it in models:
+        feed((sid, it['mtime']))
+    for mid, it in models.items():
         for r in it['revs']:
             for v, p in r['renders'].items():
                 st = os.stat(p)
                 feed((p, st.st_mtime, st.st_size))
         for g in it['glbs']:
             feed((g['file'], g['mtime'], g['size']))
-        feed((it['id'], it['status'], it['mtime']))
+        feed((mid, it['status'], it['mtime'], it['felix_blocked']))
     for name, p in pipelines.items():
         feed((name, p['worker'], p['heartbeat'], p['pid_alive'],
               json.dumps(p['live'], sort_keys=True) if p['live'] else None))
@@ -390,13 +386,10 @@ def fingerprint(schematics, models, pipelines):
 def sync_assets(schematics, models):
     """Copy needed assets + thumbnails into OUT/assets. Returns files copied."""
     copied = 0
-    # schematics: 8 display JPGs (max 900px) + thumbs + contact sheet
-    for it in schematics:
-        sid = it['id']
+    for sid, it in schematics.items():
         for v, src in it['views'].items():
             dst = os.path.join(OUT, 'assets', 'schematics', sid, v + '.jpg')
             thumb = os.path.join(OUT, 'assets', 'schematics', sid, 'thumb_' + v + '.jpg')
-            # display copy: downscale big originals to max 900px wide
             if HAS_PIL:
                 if (not os.path.exists(dst)
                         or os.path.getmtime(dst) < os.path.getmtime(src)):
@@ -416,14 +409,7 @@ def sync_assets(schematics, models):
                     copied += 1
             if make_thumb(dst if os.path.exists(dst) else src, thumb):
                 copied += 1
-        if it['contact_sheet_src']:
-            if copy_if_newer(it['contact_sheet_src'],
-                             os.path.join(OUT, 'assets', 'schematics', sid,
-                                          'contact-sheet.png')):
-                copied += 1
-    # models: render PNGs + thumbs + GLBs
-    for it in models:
-        mid = it['id']
+    for mid, it in models.items():
         mdir = os.path.join(PACK, 'models', mid)
         for r in it['revs']:
             for v, src in r['renders'].items():
@@ -452,7 +438,8 @@ CSS = """
 font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;
 padding:0 0 60px;line-height:1.45}
 .wrap{max-width:1100px;margin:0 auto;padding:16px}
-header.top{border-bottom:1px solid var(--border);padding:16px;margin-bottom:16px}
+header.top{border-bottom:1px solid var(--border);padding:16px;margin-bottom:16px;
+display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 h1{font-size:22px;margin:0 0 4px}h2{font-size:18px;margin:28px 0 12px;
 border-bottom:1px solid var(--border);padding-bottom:6px}
 .sub{color:var(--muted);font-size:13px}
@@ -464,57 +451,138 @@ border-bottom:1px solid var(--border);padding-bottom:6px}
 .dot.live{background:var(--green);box-shadow:0 0 6px var(--green)}
 .dot.idle{background:var(--muted)}
 .kv{font-size:13px;color:var(--muted);margin:2px 0}.kv b{color:var(--text);font-weight:600}
-.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
-.card{background:var(--card);border:1px solid var(--border);border-radius:10px;
-overflow:hidden;text-decoration:none;color:var(--text);display:block}
-.card img{width:100%;aspect-ratio:1.2;object-fit:cover;display:block;background:#000}
-.card .body{padding:8px 10px}.card .id{font-weight:700;font-size:14px}
-.card .meta{font-size:12px;color:var(--muted);margin-top:2px}
+/* entry list */
+.entry{display:flex;gap:14px;background:var(--card);border:1px solid var(--border);
+border-radius:12px;padding:12px;margin:10px 0;text-decoration:none;color:var(--text)}
+.entry:hover{border-color:var(--blue)}
+.entry img{width:120px;height:100px;object-fit:cover;border-radius:8px;background:#000;flex:none}
+.entry .info{flex:1;min-width:0}
+.entry .id{font-weight:700;font-size:16px}
+.entry .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.stages{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.stage{font-size:11px;padding:3px 10px;border-radius:12px;border:1px solid var(--border)}
+.stage.ok{background:rgba(63,185,80,.15);color:var(--green);border-color:transparent}
+.stage.work{background:rgba(210,153,34,.15);color:var(--yellow);border-color:transparent}
+.stage.idle{color:var(--muted)}
 .badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:12px;margin-top:4px}
 .badge.ok{background:rgba(63,185,80,.15);color:var(--green)}
 .badge.work{background:rgba(210,153,34,.15);color:var(--yellow)}
 .badge.idle{background:rgba(139,148,158,.15);color:var(--muted)}
-.score{font-size:12px;color:var(--muted)}
-.viewgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-.view{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-.view img{width:100%;display:block}.view .lbl{padding:6px 10px;font-size:13px;
-display:flex;justify-content:space-between;align-items:center}
-.pass{color:var(--green);font-weight:700}.fail{color:var(--red);font-weight:700}
-.specs{background:var(--card);border:1px solid var(--border);border-radius:10px;
-padding:12px 16px;font-size:14px}.specs li{margin:6px 0}
+/* feedback button */
+.fbbox{background:var(--card);border:1px solid var(--border);border-radius:10px;
+padding:12px;margin:12px 0;display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+.btn{background:var(--blue);color:#fff;border:none;border-radius:8px;padding:10px 18px;
+font-size:15px;font-weight:700;cursor:pointer}
+.btn:disabled{background:var(--border);color:var(--muted);cursor:default}
+.btn.ghost{background:transparent;border:1px solid var(--border);color:var(--text)}
+.count{background:var(--yellow);color:#000;font-weight:700;border-radius:12px;
+padding:2px 10px;font-size:13px}
+/* detail page */
 .back{display:inline-block;margin:12px 0;color:var(--blue);text-decoration:none}
 #viewer{width:100%;height:420px;background:#000;border-radius:10px;border:1px solid var(--border)}
-.rev{border:1px solid var(--border);border-radius:10px;padding:12px;margin:16px 0;background:var(--card)}
-.rev h3{margin:0 0 8px;font-size:16px}
-.note{font-size:12px;color:var(--muted)}
+.viewtabs{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0}
+.viewtab{background:var(--card);border:1px solid var(--border);color:var(--text);
+border-radius:8px;padding:8px 14px;font-size:14px;cursor:pointer}
+.viewtab.active{background:var(--blue);border-color:var(--blue);color:#fff}
+.compare{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+@media(max-width:700px){.compare{grid-template-columns:1fr}}
+.imgwrap{position:relative;background:#000;border-radius:10px;overflow:hidden;
+border:1px solid var(--border);touch-action:pan-y}
+.imgwrap img{width:100%;display:block;user-select:none;-webkit-user-select:none}
+.imglbl{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.65);color:#fff;
+font-size:12px;padding:3px 10px;border-radius:10px;pointer-events:none}
+.pin{position:absolute;width:26px;height:26px;border-radius:50%;background:var(--red);
+color:#fff;font-size:13px;font-weight:700;display:flex;align-items:center;
+justify-content:center;transform:translate(-50%,-50%);cursor:pointer;
+border:2px solid #fff;box-shadow:0 1px 6px rgba(0,0,0,.6);z-index:5}
+.pinedit{position:absolute;z-index:20;background:var(--card);border:1px solid var(--blue);
+border-radius:10px;padding:10px;width:240px;box-shadow:0 4px 20px rgba(0,0,0,.6)}
+.pinedit textarea{width:100%;height:70px;background:var(--bg);color:var(--text);
+border:1px solid var(--border);border-radius:6px;padding:6px;font-size:13px;resize:vertical}
+.pinedit .row{display:flex;gap:8px;margin-top:8px}
+.pinedit button{flex:1;padding:6px;border-radius:6px;border:1px solid var(--border);
+background:var(--bg);color:var(--text);cursor:pointer;font-size:13px}
+.pinedit button.save{background:var(--blue);border-color:var(--blue);color:#fff}
+.pinedit button.del{background:transparent;color:var(--red);border-color:var(--red)}
+.reviewbar{display:flex;gap:10px;align-items:center;margin:12px 0;flex-wrap:wrap}
+.toggle{display:flex;align-items:center;gap:8px;font-size:14px;cursor:pointer}
+.toggle .pill{width:44px;height:24px;border-radius:12px;background:var(--border);position:relative}
+.toggle.on .pill{background:var(--green)}
+.toggle .pill::after{content:'';position:absolute;width:18px;height:18px;border-radius:50%;
+background:#fff;top:3px;left:3px;transition:left .15s}
+.toggle.on .pill::after{left:23px}
+.hint{font-size:13px;color:var(--muted)}
+.notes{margin:16px 0}
+.noteitem{background:var(--card);border:1px solid var(--border);border-radius:10px;
+padding:10px 12px;margin:8px 0;font-size:14px}
+.noteitem .nmeta{font-size:12px;color:var(--muted);margin-bottom:4px}
+.noteitem .nmeta a{color:var(--blue)}
+.noteitem button{background:transparent;border:1px solid var(--red);color:var(--red);
+border-radius:6px;padding:2px 10px;font-size:12px;cursor:pointer;float:right}
 table.stats{border-collapse:collapse;font-size:13px;margin:8px 0}
 table.stats td{padding:3px 12px 3px 0;color:var(--muted)}
 table.stats td:first-child{color:var(--text)}
+.note{font-size:12px;color:var(--muted)}
+#dumpbox{width:100%;height:180px;background:var(--bg);color:var(--text);
+border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;display:none}
 """
 
 INDEX_TMPL = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>City-Block Asset Pipeline</title><style>{css}</style></head>
+<title>City-Block Asset Pipeline</title><style>%%CSS%%</style></head>
 <body><div class="wrap">
-<header class="top"><h1>\U0001F3D9\uFE0F City-Block Asset Pipeline</h1>
-<div class="sub">Live observability &mdash; generated {gen_time}</div></header>
-<div class="pipes">{pipes}</div>
-<h2>Schematics <span class="sub">{n_sch} items</span></h2>
-<div class="grid">{sch_cards}</div>
-<h2>3D Models <span class="sub">{n_mod} items</span></h2>
-<div class="grid">{mod_cards}</div>
-<p class="note">All times Pacific. Click any card for detail, iterations, and 3D view.</p>
-</div></body></html>"""
+<header class="top"><div><h1>\U0001F3D9\uFE0F City-Block Asset Pipeline</h1>
+<div class="sub">Live observability &mdash; generated %%GEN_TIME%%</div></div></header>
+<div class="pipes">%%PIPES%%</div>
+<div class="fbbox">
+<button class="btn" id="copyFeedback">\U0001F4CB Copy feedback</button>
+<span class="count" id="fbCount">0</span>
+<span class="hint">Review notes you pinned on entry pages are saved in this browser.
+Copy them to your clipboard, then paste into chat with Kit &mdash; each note becomes a targeted fix.</span>
+</div>
+<textarea id="dumpbox" readonly></textarea>
+<h2>Assets <span class="sub">%%N%% entries</span></h2>
+<div id="entries">%%ENTRIES%%</div>
+<p class="note">All times Pacific. Click an entry for the 3D viewer and side-by-side review mode.</p>
+</div>
+<script>
+var KEY='cb_feedback_v1';
+function loadFB(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
+document.getElementById('fbCount').textContent=loadFB().length;
+document.getElementById('copyFeedback').addEventListener('click',function(){
+  var notes=loadFB();
+  if(!notes.length){alert('No review notes saved yet. Open an entry, use review mode, right-click an image to pin a note.');return;}
+  var now=new Date();
+  var pad=function(n){return (n<10?'0':'')+n;};
+  var head='CITY-BLOCK FEEDBACK \\u2014 '+now.getFullYear()+'-'+pad(now.getMonth()+1)+'-'+pad(now.getDate())+
+    ' '+pad(now.getHours())+':'+pad(now.getMinutes())+' \\u2014 '+notes.length+' notes (paste into chat with Kit)';
+  var parts=[head];
+  notes.forEach(function(n){
+    parts.push('['+n.asset+' | rev '+(n.rev||'\\u2014')+' | '+n.view+' | '+n.side+
+      ' @ x='+Math.round(n.x*100)+'% y='+Math.round(n.y*100)+'% | '+n.ts+']');
+    parts.push(n.text);
+    parts.push('---');
+  });
+  var txt=parts.join('\\n');
+  function done(ok){
+    var msg=document.querySelector('.fbbox .hint');
+    if(ok){localStorage.removeItem(KEY);document.getElementById('fbCount').textContent='0';
+      msg.textContent='\\u2713 Copied '+notes.length+' notes to clipboard \\u2014 local feedback cleared. Paste into chat with Kit.';}
+    else{var box=document.getElementById('dumpbox');box.style.display='block';box.value=txt;
+      box.select();msg.textContent='Clipboard blocked \\u2014 copy the text above manually, then clear with the button below.';}
+  }
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(function(){done(true)},function(){done(false)});
+  }else{done(false);}
+});
+</script>
+</body></html>"""
 
 
 def pipe_card(name, p):
-    # A pipeline is RUNNING if it holds a lease and the worker is alive
-    # (pid alive) OR has a fresh heartbeat (<10 min). PIDs go stale when
-    # the sleep process dies but workers keep heartbeating via subagents.
     hb_fresh = False
     if p.get('heartbeat'):
         try:
-            from datetime import datetime, timezone
             hb = datetime.fromisoformat(p['heartbeat'])
             age = (datetime.now(timezone.utc) - hb).total_seconds()
             hb_fresh = age < 600
@@ -542,80 +610,69 @@ def pipe_card(name, p):
     return '<div class="pipe">' + ''.join(rows) + '</div>'
 
 
-def sch_card(it):
-    thumb = f'assets/schematics/{it["id"]}/thumb_front.jpg'
-    if not os.path.exists(os.path.join(OUT, thumb)):
-        thumb = f'assets/schematics/{it["id"]}/contact-sheet.png'
-    scores = it['scores']
-    avg = (sum(scores.values()) / len(scores)) if scores else None
-    score_txt = f'avg {avg:.2f}' if avg else 'no scores'
-    badge = '<span class="badge ok">finished</span>' if it['complete'] else '<span class="badge idle">partial</span>'
-    return (f'<a class="card" href="schematics/{it["id"]}.html">'
-            f'<img loading="lazy" src="{thumb}" alt="{esc(it["id"])}">'
-            f'<div class="body"><div class="id">{esc(it["id"])}</div>'
-            f'<div class="meta">{esc(it["title"][:40])}</div>'
-            f'<div class="score">{score_txt} &middot; upd {fmt_ts(it["mtime"])}</div>'
-            f'{badge}</div></a>')
+def entry_stages(sch, mod):
+    """Stage badges for one asset: Schematics -> 3D modeling -> Accepted."""
+    stages = []
+    if sch and sch['complete']:
+        stages.append(('Schematics ✓', 'ok'))
+    elif sch:
+        stages.append((f'Schematics {len(sch["views"])}/8', 'work'))
+    else:
+        stages.append(('No schematics', 'idle'))
+    if mod:
+        st = mod['status']
+        if st == 'finished':
+            stages.append(('3D modeling ✓', 'ok'))
+        elif st == 'in_progress':
+            q = mod['queue_status']
+            lbl = f'3D modeling · {mod["n_revs"]} revs'
+            if q and q not in ('—', 'in_progress'):
+                lbl += f' ({q})'
+            stages.append((lbl, 'work'))
+        else:
+            stages.append((f'3D {st}', 'idle'))
+    else:
+        stages.append(('3D not started', 'idle'))
+    if mod and mod['status'] == 'finished' and not mod['felix_blocked']:
+        stages.append(('Accepted ✓', 'ok'))
+    elif mod and mod['felix_blocked']:
+        stages.append(('Felix review pending', 'work'))
+    return stages
 
 
-def mod_card(it):
-    # thumbnail: latest rev front render thumb, else placeholder
+def entry_card(aid, sch, mod):
     thumb = None
-    if it['revs']:
-        r = it['revs'][-1]
-        tp = f'assets/models/{it["id"]}/renders/{r["rev"]}/thumb_front.jpg'
+    if mod and mod['latest_rev']:
+        tp = f'assets/models/{aid}/renders/{mod["latest_rev"]}/thumb_front.jpg'
         if os.path.exists(os.path.join(OUT, tp)):
             thumb = tp
-    img = f'<img loading="lazy" src="{thumb}">' if thumb else '<div style="aspect-ratio:1.2;background:#000"></div>'
-    badge_cls = {'finished': 'ok', 'in_progress': 'work', 'pending': 'idle'}.get(it['status'], 'idle')
-    badge_txt = {'finished': 'finished', 'in_progress': 'in progress', 'pending': 'pending'}.get(it['status'], it['status'])
-    glb = f' &middot; {esc(it["latest_glb"]["file"])}' if it['latest_glb'] else ''
-    return (f'<a class="card" href="models/{it["id"]}.html">{img}'
-            f'<div class="body"><div class="id">{esc(it["id"])}</div>'
-            f'<div class="meta">{it["n_revs"]} revs{glb}</div>'
-            f'<div class="score">upd {fmt_ts(it["mtime"])}</div>'
-            f'<span class="badge {badge_cls}">{badge_txt}</span></div></a>')
+    if not thumb and sch:
+        tp = f'assets/schematics/{aid}/thumb_front.jpg'
+        if os.path.exists(os.path.join(OUT, tp)):
+            thumb = tp
+    img = f'<img loading="lazy" src="{thumb}" alt="">' if thumb else \
+        '<img alt="" src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7">'
+    title = sch['title'] if sch and sch.get('title') else aid
+    stages = ''.join(f'<span class="stage {cls}">{esc(lbl)}</span>'
+                     for lbl, cls in entry_stages(sch, mod))
+    meta_bits = []
+    if sch and sch['scores']:
+        avg = sum(sch['scores'].values()) / len(sch['scores'])
+        meta_bits.append(f'schematics avg {avg:.2f}')
+    if mod and mod['latest_rev']:
+        meta_bits.append(f'rev {esc(mod["latest_rev"])}')
+    if mod and mod['latest_glb']:
+        meta_bits.append(esc(mod['latest_glb']['file']))
+    mtime = max(sch['mtime'] if sch else 0, mod['mtime'] if mod else 0)
+    meta_bits.append(f'upd {fmt_ts(mtime)}')
+    return (f'<a class="entry" href="entries/{aid}.html">{img}'
+            f'<div class="info"><div class="id">{esc(aid)}</div>'
+            f'<div class="meta">{esc(title[:60])}</div>'
+            f'<div class="meta">{" · ".join(meta_bits)}</div>'
+            f'<div class="stages">{stages}</div></div></a>')
+
 
 # -------------------------------------------------------- detail pages ---
-
-SCH_TMPL = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{id} &mdash; schematic</title><style>{css}</style></head>
-<body><div class="wrap">
-<a class="back" href="../index.html">&larr; pipeline overview</a>
-<h1>{id}</h1><div class="sub">{title}</div>
-<div class="kv">status <b>{status}</b> &middot; last updated <b>{mtime}</b></div>
-<div class="kv">scores: <b>{scores}</b></div>
-{sheets}
-<h2>Canonical views</h2><div class="viewgrid">{views}</div>
-<h2>Specs</h2><ul class="specs">{specs}</ul>
-</div></body></html>"""
-
-
-def render_schematic(it):
-    sid = it['id']
-    vcards = []
-    for v in VIEWS:
-        if v in it['views']:
-            src = f'../assets/schematics/{sid}/{v}.jpg'
-            sc = it['scores'].get(v)
-            sc_txt = f'<span class="pass">{sc:.2f}</span>' if sc and sc >= 9 else (f'{sc:.2f}' if sc else '—')
-            vcards.append(f'<div class="view"><img loading="lazy" src="{src}">'
-                          f'<div class="lbl"><span>{VIEW_LABELS[v]}</span><span>{sc_txt}</span></div></div>')
-    scores = it['scores']
-    score_txt = ', '.join(f'{VIEW_LABELS.get(k, k)} {v:.2f}' for k, v in sorted(scores.items())) or 'none yet'
-    specs = ''.join(f'<li>{s}</li>' for s in it['specs']) or '<li>—</li>'
-    sheets = ''
-    if it['has_contact_sheet']:
-        sheets = (f'<h2>Contact sheet</h2><div class="view">'
-                  f'<img loading="lazy" src="../assets/schematics/{sid}/contact-sheet.png"></div>')
-    html = SCH_TMPL.format(
-        css=CSS, id=esc(sid), title=esc(it['title']),
-        status='finished (8/8 views)' if it['complete'] else 'partial',
-        mtime=fmt_ts_long(it['mtime']), scores=esc(score_txt),
-        sheets=sheets, views=''.join(vcards), specs=specs)
-    write_if_changed(os.path.join(OUT, 'schematics', sid + '.html'), html)
-
 
 VIEWER_JS = """
 <script type="importmap">
@@ -651,76 +708,209 @@ addEventListener('resize',()=>{renderer.setSize(el.clientWidth,420);
 cam.aspect=el.clientWidth/420;cam.updateProjectionMatrix();});
 </script>"""
 
-MOD_TMPL = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+# Review-mode JS: pin notes on images, persisted to localStorage.
+REVIEW_JS = """
+(function(){
+var KEY='cb_feedback_v1';
+var ASSET=document.body.dataset.asset, REV=document.body.dataset.rev;
+function loadFB(){try{return JSON.parse(localStorage.getItem(KEY))||[]}catch(e){return[]}}
+function saveFB(a){try{localStorage.setItem(KEY,JSON.stringify(a))}catch(e){}}
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+var view='front', reviewOn=true, wraps={};
+function $(id){return document.getElementById(id)}
+function setView(v){
+  view=v;
+  document.querySelectorAll('.viewtab').forEach(function(b){b.classList.toggle('active',b.dataset.view===v)});
+  var d=VIEWS_DATA[v]||{};
+  setImg('render',d.render); setImg('schematic',d.schematic);
+  renderPins(); renderNotes();
+}
+function setImg(side,src){
+  var w=wraps[side], img=w.querySelector('img'), none=w.querySelector('.nonimg');
+  w.querySelectorAll('.pin,.pinedit').forEach(function(e){e.remove()});
+  if(src){img.style.display='block';img.src=src;if(none)none.style.display='none';}
+  else{img.style.display='none';if(none)none.style.display='flex';}
+}
+function pinsFor(v){return loadFB().filter(function(n){return n.asset===ASSET&&n.view===v})}
+function renderPins(){
+  ['render','schematic'].forEach(function(side){
+    var w=wraps[side];
+    w.querySelectorAll('.pin,.pinedit').forEach(function(e){e.remove()});
+    pinsFor(view).filter(function(n){return n.side===side}).forEach(function(n,i){
+      var p=document.createElement('div');p.className='pin';p.textContent=(i+1);
+      p.style.left=(n.x*100)+'%';p.style.top=(n.y*100)+'%';p.title=n.text;
+      p.addEventListener('click',function(ev){ev.stopPropagation();openEditor(w,n);});
+      w.appendChild(p);
+    });
+  });
+}
+function openEditor(w,existing){
+  w.querySelectorAll('.pinedit').forEach(function(e){e.remove()});
+  var d=document.createElement('div');d.className='pinedit';
+  var r=w.getBoundingClientRect();
+  d.style.left='50%';d.style.top='50%';d.style.transform='translate(-50%,-50%)';
+  var ta=document.createElement('textarea');
+  ta.placeholder='What should change here?';ta.value=existing?existing.text:'';
+  var row=document.createElement('div');row.className='row';
+  var sv=document.createElement('button');sv.className='save';sv.textContent=existing?'Update':'Save note';
+  var del=document.createElement('button');del.className='del';del.textContent='Delete';
+  var ca=document.createElement('button');ca.textContent='Cancel';
+  sv.onclick=function(){
+    var t=ta.value.trim();if(!t){ta.focus();return;}
+    var all=loadFB();
+    if(existing){all.forEach(function(n){if(n.id===existing.id)n.text=t;});}
+    else{all.push({id:'n'+Date.now().toString(36)+Math.floor(Math.random()*1e4),
+      asset:ASSET,rev:REV,view:view,side:w.dataset.side,
+      x:pending.x,y:pending.y,text:t,
+      ts:new Date().toISOString().slice(0,16).replace('T',' ')});}
+    saveFB(all);d.remove();renderPins();renderNotes();
+  };
+  del.onclick=function(){
+    if(existing){saveFB(loadFB().filter(function(n){return n.id!==existing.id}));}
+    d.remove();renderPins();renderNotes();
+  };
+  ca.onclick=function(){d.remove()};
+  row.appendChild(sv);if(existing)row.appendChild(del);row.appendChild(ca);
+  d.appendChild(ta);d.appendChild(row);w.appendChild(d);ta.focus();
+}
+var pending=null, pressTimer=null;
+function armWrap(side){
+  var w=$('wrap-'+side);wraps[side]=w;w.dataset.side=side;
+  function dropAt(clientX,clientY){
+    if(!reviewOn)return;
+    var img=w.querySelector('img');if(!img||img.style.display==='none')return;
+    var r=img.getBoundingClientRect();
+    var x=(clientX-r.left)/r.width, y=(clientY-r.top)/r.height;
+    if(x<0||x>1||y<0||y>1)return;
+    pending={x:x,y:y};openEditor(w,null);
+  }
+  w.addEventListener('contextmenu',function(e){e.preventDefault();dropAt(e.clientX,e.clientY);});
+  w.addEventListener('touchstart',function(e){
+    pressTimer=setTimeout(function(){
+      var t=e.touches[0];dropAt(t.clientX,t.clientY);pressTimer=null;
+    },600);
+  },{passive:true});
+  ['touchend','touchmove'].forEach(function(ev){w.addEventListener(ev,function(){
+    if(pressTimer){clearTimeout(pressTimer);pressTimer=null;}
+  },{passive:true});});
+}
+function renderNotes(){
+  var list=$('notesList');var ns=loadFB().filter(function(n){return n.asset===ASSET});
+  $('notesCount').textContent=ns.length;
+  if(!ns.length){list.innerHTML='<p class="hint">No notes yet. Turn on review mode and right-click (or long-press) any image to pin a note.</p>';return;}
+  ns.sort(function(a,b){return (a.ts<b.ts?-1:1)});
+  list.innerHTML='';
+  ns.forEach(function(n,i){
+    var d=document.createElement('div');d.className='noteitem';
+    var del=document.createElement('button');del.textContent='Delete';
+    del.onclick=function(){saveFB(loadFB().filter(function(x){return x.id!==n.id}));renderPins();renderNotes();};
+    var meta=document.createElement('div');meta.className='nmeta';
+    var a=document.createElement('a');a.href='#';a.textContent=n.view+' · '+n.side;
+    a.onclick=function(e){e.preventDefault();setView(n.view);window.scrollTo(0,$('review').offsetTop-10);};
+    meta.appendChild(a);
+    meta.insertAdjacentHTML('beforeend',' · rev '+esc(n.rev||'—')+' · x='+Math.round(n.x*100)+'% y='+Math.round(n.y*100)+'% · '+esc(n.ts));
+    var body=document.createElement('div');body.textContent=(i+1)+'. '+n.text;
+    d.appendChild(del);d.appendChild(meta);d.appendChild(body);list.appendChild(d);
+  });
+}
+document.querySelectorAll('.viewtab').forEach(function(b){
+  b.addEventListener('click',function(){setView(b.dataset.view)});
+});
+var tg=$('reviewToggle');
+tg.addEventListener('click',function(){reviewOn=!reviewOn;tg.classList.toggle('on',reviewOn);
+  $('reviewHint').textContent=reviewOn?
+   'Review mode ON — right-click (or long-press) either image to drop a pin and leave a note.':
+   'Review mode OFF — right-click works normally again.';});
+armWrap('render');armWrap('schematic');
+setView('front');
+})();
+"""
+
+ENTRY_TMPL = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>{id} &mdash; 3D model</title><style>{css}</style></head>
-<body><div class="wrap">
-<a class="back" href="../index.html">&larr; pipeline overview</a>
-<h1>{id}</h1>
-<div class="kv">status <b>{status}</b> &middot; queue <b>{qstat}</b> &middot; last updated <b>{mtime}</b></div>
-{mesh}{judges}
-{viewer}
-<h2>Iterations ({n_revs})</h2>{revs}
-</div></body></html>"""
+<title>%%ID%% &mdash; asset review</title><style>%%CSS%%</style></head>
+<body data-asset="%%ID%%" data-rev="%%REV%%"><div class="wrap">
+<a class="back" href="../index.html">&larr; all assets</a>
+<h1>%%ID%%</h1><div class="sub">%%TITLE%%</div>
+<div class="stages" style="margin:10px 0">%%STAGES%%</div>
+<div class="kv">last updated <b>%%MTIME%%</b> &middot; <span id="notesCount">0</span> review notes on this asset</div>
+%%VIEWER%%
+<h2 id="review">Review &mdash; render vs schematic</h2>
+<div class="reviewbar">
+<div class="toggle on" id="reviewToggle"><div class="pill"></div><span>Review mode</span></div>
+<span class="hint" id="reviewHint">Review mode ON &mdash; right-click (or long-press) either image to drop a pin and leave a note.</span>
+</div>
+<div class="viewtabs">%%TABS%%</div>
+<div class="compare">
+<div class="imgwrap" id="wrap-render"><img alt="3D render"><div class="imglbl">3D render &middot; %%REV%%</div>
+<div class="nonimg" style="display:none;min-height:200px;align-items:center;justify-content:center;color:var(--muted)">no render for this view yet</div></div>
+<div class="imgwrap" id="wrap-schematic"><img alt="schematic"><div class="imglbl">schematic</div>
+<div class="nonimg" style="display:none;min-height:200px;align-items:center;justify-content:center;color:var(--muted)">no schematic for this view</div></div>
+</div>
+<h2>Notes on this asset</h2>
+<div class="notes" id="notesList"></div>
+</div>
+<script>var VIEWS_DATA=%%VIEWS_JSON%%;</script>
+<script>%%REVIEW_JS%%</script>
+</body></html>"""
 
 
-def render_model(it):
-    mid = it['id']
-    mesh = ''
-    if it['mesh']:
-        m = it['mesh']
-        mesh = ('<table class="stats"><tr><td>objects</td><td>{o}</td></tr>'
-                '<tr><td>triangles</td><td>{t}</td></tr>'
-                '<tr><td>non-manifold</td><td>{n}</td></tr></table>').format(
-            o=m.get('objects', '—'), t=m.get('tris', '—'), n=m.get('nonmanifold_edges', '—'))
-    judges = ''
-    if it['scores']:
-        rows = []
-        for v in VIEWS:
-            if v in it['scores']:
-                verdict, sc = it['scores'][v]
-                cls = 'pass' if verdict == 'PASS' else 'fail'
-                rows.append(f'{VIEW_LABELS[v]} <span class="{cls}">{sc:.2f}</span>')
-        judges = f'<div class="kv">judges: <b>{" · ".join(rows)}</b></div>'
-    elif it['latest_glb']:
-        judges = '<div class="kv">judges: <b>exported GLB (passed per pipeline)</b></div>'
+def render_entry(aid, sch, mod):
+    stages = ''.join(f'<span class="stage {cls}">{esc(lbl)}</span>'
+                     for lbl, cls in entry_stages(sch, mod))
+    title = sch['title'] if sch and sch.get('title') else aid
+    rev = mod['latest_rev'] if mod and mod['latest_rev'] else '—'
+    # viewer
     viewer = ''
-    if it['latest_glb']:
-        g = it['latest_glb']
-        viewer = (f'<h2>3D viewer &mdash; {esc(g["file"])}</h2>'
+    if mod and mod['latest_glb']:
+        g = mod['latest_glb']
+        mesh = ''
+        if mod['mesh']:
+            m = mod['mesh']
+            mesh = ('<table class="stats"><tr><td>objects</td><td>{}</td></tr>'
+                    '<tr><td>triangles</td><td>{}</td></tr>'
+                    '<tr><td>non-manifold</td><td>{}</td></tr></table>').format(
+                m.get('objects', '—'), m.get('tris', '—'), m.get('nonmanifold_edges', '—'))
+        viewer = (f'<h2>3D viewer &mdash; {esc(g["file"])}</h2>{mesh}'
                   f'<div id="viewer"></div><div class="kv" id="vstat">loading…</div>'
-                  f'<script>const GLB_URL="../assets/models/{mid}/{esc(g["file"])}";</script>'
+                  f'<script>const GLB_URL="../assets/models/{aid}/{esc(g["file"])}";</script>'
                   + VIEWER_JS)
-    rev_html = []
-    for r in reversed(it['revs']):
-        cards = []
-        for v in VIEWS:
-            if v in r['renders']:
-                src = f'../assets/models/{mid}/renders/{r["rev"]}/{v}.png'
-                cards.append(f'<div class="view"><img loading="lazy" src="{src}">'
-                             f'<div class="lbl"><span>{VIEW_LABELS[v]}</span></div></div>')
-        # also include any non-canonical pngs
-        for name, _ in r['renders'].items():
-            if name not in VIEWS:
-                src = f'../assets/models/{mid}/renders/{r["rev"]}/{name}.png'
-                cards.append(f'<div class="view"><img loading="lazy" src="{src}">'
-                             f'<div class="lbl"><span>{esc(name)}</span></div></div>')
-        rev_html.append(f'<div class="rev"><h3>rev {esc(r["rev"])} '
-                        f'<span class="note">&middot; {fmt_ts_long(r["mtime"])}</span></h3>'
-                        f'<div class="viewgrid">{"".join(cards)}</div></div>')
-    html = MOD_TMPL.format(
-        css=CSS, id=esc(mid), status=esc(it['status']),
-        qstat=esc(it['queue_status']), mtime=fmt_ts_long(it['mtime']),
-        mesh=mesh, judges=judges, viewer=viewer,
-        n_revs=it['n_revs'], revs=''.join(rev_html) or '<p class="note">no renders yet</p>')
-    write_if_changed(os.path.join(OUT, 'models', mid + '.html'), html)
+    # per-view compare data (relative to entries/ dir)
+    views_data = {}
+    for v in VIEWS:
+        r = s = None
+        if mod and mod['latest_rev']:
+            rp = f'assets/models/{aid}/renders/{mod["latest_rev"]}/{v}.png'
+            if os.path.exists(os.path.join(OUT, rp)):
+                r = '../' + rp
+        if sch and v in sch['views']:
+            sp = f'assets/schematics/{aid}/{v}.jpg'
+            if os.path.exists(os.path.join(OUT, sp)):
+                s = '../' + sp
+        views_data[v] = {'render': r, 'schematic': s}
+    tabs = ''.join(
+        f'<button class="viewtab" data-view="{v}">{VIEW_LABELS[v]}</button>' for v in VIEWS)
+    mtime = max(sch['mtime'] if sch else 0, mod['mtime'] if mod else 0)
+    html = ENTRY_TMPL
+    html = html.replace('%%CSS%%', CSS)
+    html = html.replace('%%ID%%', esc(aid))
+    html = html.replace('%%TITLE%%', esc(title[:80]))
+    html = html.replace('%%REV%%', esc(rev))
+    html = html.replace('%%STAGES%%', stages)
+    html = html.replace('%%MTIME%%', fmt_ts_long(mtime))
+    html = html.replace('%%TABS%%', tabs)
+    html = html.replace('%%VIEWS_JSON%%', json.dumps(views_data))
+    html = html.replace('%%REVIEW_JS%%', REVIEW_JS)
+    # viewer block: insert before review section (VIEWER_JS contains its own
+    # <script> tags; ENTRY_TMPL has %%VIEWER%% placeholder)
+    html = html.replace('%%VIEWER%%', viewer)
+    write_if_changed(os.path.join(OUT, 'entries', aid + '.html'), html)
 
 
 # ----------------------------------------------------------------- main ---
 
 def main():
     t0 = datetime.now(timezone.utc)
-    # queue statuses for models
     queue_status = {}
     try:
         st = json.load(open(os.path.join(
@@ -749,19 +939,19 @@ def main():
 
     pipes = pipe_card('3D modeling pipeline', pipelines['modeling']) + \
             pipe_card('Schematic pipeline', pipelines['schematic'])
-    index = INDEX_TMPL.format(
-        css=CSS,
-        gen_time=datetime.now(LA).strftime('%Y-%m-%d %H:%M %Z'),
-        pipes=pipes,
-        n_sch=len(schematics), n_mod=len(models),
-        sch_cards=''.join(sch_card(it) for it in schematics),
-        mod_cards=''.join(mod_card(it) for it in models),
-    )
+    all_ids = sorted(set(schematics) | set(models))
+    entries = ''.join(entry_card(aid, schematics.get(aid), models.get(aid))
+                      for aid in all_ids)
+    index = INDEX_TMPL
+    index = index.replace('%%CSS%%', CSS)
+    index = index.replace('%%GEN_TIME%%',
+                          datetime.now(LA).strftime('%Y-%m-%d %H:%M %Z'))
+    index = index.replace('%%PIPES%%', pipes)
+    index = index.replace('%%N%%', str(len(all_ids)))
+    index = index.replace('%%ENTRIES%%', entries)
     write_if_changed(os.path.join(OUT, 'index.html'), index)
-    for it in schematics:
-        render_schematic(it)
-    for it in models:
-        render_model(it)
+    for aid in all_ids:
+        render_entry(aid, schematics.get(aid), models.get(aid))
 
     meta = {
         'generated_at': t0.isoformat(),
@@ -772,11 +962,10 @@ def main():
         'assets_copied': copied,
     }
     write_if_changed(meta_path, json.dumps(meta, indent=2))
-    # .nojekyll so GitHub Pages serves _assets etc without Jekyll processing
     write_if_changed(os.path.join(OUT, '.nojekyll'), '')
     dt = (datetime.now(timezone.utc) - t0).total_seconds()
     print(f'done: {len(schematics)} schematics, {len(models)} models, '
-          f'{copied} assets copied, {dt:.1f}s')
+          f'{len(all_ids)} entries, {copied} assets copied, {dt:.1f}s')
 
 
 if __name__ == '__main__':
