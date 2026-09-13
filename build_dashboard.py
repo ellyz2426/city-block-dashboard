@@ -286,16 +286,16 @@ def collect_models(queue_status):
         # - not in queue but has GLB: finished UNLESS Felix-flagged defect
         #   is unresolved (then in_progress — needs a fix rev)
         # - v2 model-meta.json with 3 passing judges also means finished
+        # A model with a GLB is finished UNLESS:
+        #  - the pipeline queue has it as actively being worked, or
+        #  - there's an unresolved Felix-flagged defect against it.
+        # Build scripts/rev folders alone are history, not activity.
         qs = queue_status.get(mid, '')
         if qs in ('building', 'judging', 'fixing', 'rendering', 'in_progress'):
             status = 'in_progress'
-        elif qs == 'complete':
-            status = 'finished'
         elif felix_blocked:
             status = 'in_progress'
-        elif (glbs and meta_ok) or (glbs and not has_build_activity):
-            # GLB exists and either v2 judges pass or no active build dirs
-            # (legacy complete from pre-v2 manual builds)
+        elif qs == 'complete' or (glbs and meta_ok) or glbs:
             status = 'finished'
         elif has_build_activity:
             status = 'in_progress'
