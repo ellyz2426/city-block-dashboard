@@ -196,6 +196,53 @@ def parse_scorecard(text):
     return scores
 
 
+def outstanding_feedback(mdir):
+    """Unresolved Felix-flagged defects from the model's QA logs.
+
+    Mirrors model_audit._felix_rejection matching: a defect counts as
+    resolved only when a later 'RESOLVED (Felix-flagged defect):' line names
+    the same defect (matched on the name = text before any parenthetical).
+    Returns newest-first list of {'name', 'rev'} dicts.
+    """
+    flagged, resolved = [], []
+    try:
+        files = sorted(os.listdir(mdir))
+    except OSError:
+        return []
+    for f in files:
+        if not (f == 'model-qa-log.md'
+                or re.match(r'(model-qa-log|qa-log)-.+\.md$', f)):
+            continue
+        try:
+            text = open(os.path.join(mdir, f),
+                        encoding='utf-8', errors='replace').read()
+        except OSError:
+            continue
+        for line in text.splitlines():
+            m = re.search(r'Felix-flagged defect:\s*(.+)', line)
+            if m:
+                flagged.append(m.group(1).strip())
+            m = re.search(r'RESOLVED\s*\(Felix-flagged defect\):\s*(.+)', line)
+            if m:
+                resolved.append(m.group(1).strip().lower())
+    out, seen = [], set()
+    for defect in reversed(flagged):  # newest first
+        name = re.split(r'\s+—\s+', defect)[0]  # drop trailing " — Felix quote"
+        name = name.split('(')[0].strip()
+        key = name.lower()
+        if not key or key in seen:
+            continue
+        if any(key in r for r in resolved):
+            continue
+        seen.add(key)
+        rev = ''
+        rm = re.search(r'\b([a-z]{2}\d+)\b', defect)
+        if rm:
+            rev = rm.group(1)
+        out.append({'name': name, 'rev': rev})
+    return out
+
+
 def collect_models(queue_status):
     """Return {id: model item} with iterations."""
     base = os.path.join(PACK, 'models')
@@ -311,6 +358,7 @@ def collect_models(queue_status):
             'status': status,
             'queue_status': queue_status.get(mid, '—'),
             'felix_blocked': felix_blocked,
+            'outstanding': outstanding_feedback(mdir),
             'mtime': max(mtimes) if mtimes else 0,
             'n_revs': len(revs),
         }
@@ -451,6 +499,12 @@ border-bottom:1px solid var(--border);padding-bottom:6px}
 .dot.live{background:var(--green);box-shadow:0 0 6px var(--green)}
 .dot.idle{background:var(--muted)}
 .kv{font-size:13px;color:var(--muted);margin:2px 0}.kv b{color:var(--text);font-weight:600}
+.outstanding{background:#3a2b12;border:1px solid #8a6d2f;border-radius:10px;padding:12px 14px;margin:12px 0}
+.otitle{font-weight:700;color:#f0c96a;margin-bottom:6px}
+.outstanding ul{margin:6px 0 6px 18px;padding:0}
+.outstanding li{margin:4px 0;font-size:14px}
+.orev{font-size:12px;color:var(--muted);border:1px solid var(--muted);border-radius:4px;padding:0 5px;margin-left:6px}
+.ohint{font-size:12px;color:var(--muted);margin-top:6px}
 /* entry list */
 .entry{display:flex;gap:14px;background:var(--card);border:1px solid var(--border);
 border-radius:12px;padding:12px;margin:10px 0;text-decoration:none;color:var(--text)}
@@ -834,6 +888,7 @@ ENTRY_TMPL = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <h1>%%ID%%</h1><div class="sub">%%TITLE%%</div>
 <div class="stages" style="margin:10px 0">%%STAGES%%</div>
 <div class="kv">last updated <b>%%MTIME%%</b> &middot; <span id="notesCount">0</span> review notes on this asset</div>
+%%OUTSTANDING%%
 %%VIEWER%%
 <h2 id="review">Review &mdash; render vs schematic</h2>
 <div class="reviewbar">
@@ -891,6 +946,20 @@ def render_entry(aid, sch, mod):
     tabs = ''.join(
         f'<button class="viewtab" data-view="{v}">{VIEW_LABELS[v]}</button>' for v in VIEWS)
     mtime = max(sch['mtime'] if sch else 0, mod['mtime'] if mod else 0)
+    # outstanding Felix feedback (unresolved flagged defects from QA logs)
+    outstanding = ''
+    items = (mod['outstanding'] if mod and mod.get('outstanding') else [])
+    if items:
+        lis = ''.join(
+            '<li><b>{}</b>{}</li>'.format(
+                esc(d['name']),
+                f' <span class="orev">{esc(d["rev"])}</span>' if d['rev'] else '')
+            for d in items)
+        outstanding = (
+            '<div class="outstanding"><div class="otitle">Outstanding feedback'
+            f' ({len(items)})</div><ul>{lis}</ul>'
+            '<div class="ohint">Felix-flagged, not yet resolved &mdash; each gets '
+            'a targeted check on the next revision before holistic judging.</div></div>')
     html = ENTRY_TMPL
     html = html.replace('%%CSS%%', CSS)
     html = html.replace('%%ID%%', esc(aid))
@@ -898,6 +967,7 @@ def render_entry(aid, sch, mod):
     html = html.replace('%%REV%%', esc(rev))
     html = html.replace('%%STAGES%%', stages)
     html = html.replace('%%MTIME%%', fmt_ts_long(mtime))
+    html = html.replace('%%OUTSTANDING%%', outstanding)
     html = html.replace('%%TABS%%', tabs)
     html = html.replace('%%VIEWS_JSON%%', json.dumps(views_data))
     html = html.replace('%%REVIEW_JS%%', REVIEW_JS)
