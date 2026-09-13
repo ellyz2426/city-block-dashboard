@@ -1,0 +1,57 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>32-offices-downtown &mdash; schematic</title><style>
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;
+--muted:#8b949e;--green:#3fb950;--yellow:#d29922;--red:#f85149;--blue:#58a6ff}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--text);
+font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;margin:0;
+padding:0 0 60px;line-height:1.45}
+.wrap{max-width:1100px;margin:0 auto;padding:16px}
+header.top{border-bottom:1px solid var(--border);padding:16px;margin-bottom:16px}
+h1{font-size:22px;margin:0 0 4px}h2{font-size:18px;margin:28px 0 12px;
+border-bottom:1px solid var(--border);padding-bottom:6px}
+.sub{color:var(--muted);font-size:13px}
+.pipes{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:12px 0}
+@media(max-width:640px){.pipes{grid-template-columns:1fr}}
+.pipe{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:12px}
+.pipe .name{font-weight:700;margin-bottom:6px}
+.dot{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+.dot.live{background:var(--green);box-shadow:0 0 6px var(--green)}
+.dot.idle{background:var(--muted)}
+.kv{font-size:13px;color:var(--muted);margin:2px 0}.kv b{color:var(--text);font-weight:600}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:12px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:10px;
+overflow:hidden;text-decoration:none;color:var(--text);display:block}
+.card img{width:100%;aspect-ratio:1.2;object-fit:cover;display:block;background:#000}
+.card .body{padding:8px 10px}.card .id{font-weight:700;font-size:14px}
+.card .meta{font-size:12px;color:var(--muted);margin-top:2px}
+.badge{display:inline-block;font-size:11px;padding:2px 8px;border-radius:12px;margin-top:4px}
+.badge.ok{background:rgba(63,185,80,.15);color:var(--green)}
+.badge.work{background:rgba(210,153,34,.15);color:var(--yellow)}
+.badge.idle{background:rgba(139,148,158,.15);color:var(--muted)}
+.score{font-size:12px;color:var(--muted)}
+.viewgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
+.view{background:var(--card);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.view img{width:100%;display:block}.view .lbl{padding:6px 10px;font-size:13px;
+display:flex;justify-content:space-between;align-items:center}
+.pass{color:var(--green);font-weight:700}.fail{color:var(--red);font-weight:700}
+.specs{background:var(--card);border:1px solid var(--border);border-radius:10px;
+padding:12px 16px;font-size:14px}.specs li{margin:6px 0}
+.back{display:inline-block;margin:12px 0;color:var(--blue);text-decoration:none}
+#viewer{width:100%;height:420px;background:#000;border-radius:10px;border:1px solid var(--border)}
+.rev{border:1px solid var(--border);border-radius:10px;padding:12px;margin:16px 0;background:var(--card)}
+.rev h3{margin:0 0 8px;font-size:16px}
+.note{font-size:12px;color:var(--muted)}
+table.stats{border-collapse:collapse;font-size:13px;margin:8px 0}
+table.stats td{padding:3px 12px 3px 0;color:var(--muted)}
+table.stats td:first-child{color:var(--text)}
+</style></head>
+<body><div class="wrap">
+<a class="back" href="../index.html">&larr; pipeline overview</a>
+<h1>32-offices-downtown</h1><div class="sub">Offices Downtown</div>
+<div class="kv">status <b>finished (8/8 views)</b> &middot; last updated <b>2026-09-13 02:29 PDT</b></div>
+<div class="kv">scores: <b>Angle BL 9.55, Angle FR 9.50, Back 9.00, Bottom 9.43, Front 9.25, Left 9.15, Right 9.35, Top 9.40</b></div>
+<h2>Contact sheet</h2><div class="view"><img loading="lazy" src="../assets/schematics/32-offices-downtown/contact-sheet.png"></div>
+<h2>Canonical views</h2><div class="viewgrid"><div class="view"><img loading="lazy" src="../assets/schematics/32-offices-downtown/front.jpg"><div class="lbl"><span>Front</span><span><span class="pass">9.25</span></span></div></div><div class="view"><img loading="lazy" src="../assets/schematics/32-offices-downtown/back.jpg"><div class="lbl"><span>Back</span><span><span class="pass">9.00</span></span></div></div><div class="view"><img loading="lazy" src="../assets/schematics/32-offices-downtown/left.jpg"><div class="lbl"><span>Left</span><span><span class="pass">9.15</span></span></div></div><div class="view"><img loading="lazy" src="../assets/schematics/32-offices-downtown/right.jpg"><div class="lbl"><span>Right</span><span><span class="pass">9.35</span></span></div></div><div class="view"><img loading="lazy" src="../assets/schematics/32-offices-downtown/top.jpg"><div class="lbl"><span>Top</span><span><span class="pass">9.40</span></span></div></div><div class="view"><img loading="lazy" src="../assets/schematics/32-offices-downtown/bottom.jpg"><div class="lbl"><span>Bottom</span><span><span class="pass">9.43</span></span></div></div><div class="view"><img loading="lazy" src="../assets/schematics/32-offices-downtown/angle-front-right.jpg"><div class="lbl"><span>Angle FR</span><span><span class="pass">9.50</span></span></div></div><div class="view"><img loading="lazy" src="../assets/schematics/32-offices-downtown/angle-back-left.jpg"><div class="lbl"><span>Angle BL</span><span><span class="pass">9.55</span></span></div></div></div>
+<h2>Specs</h2><ul class="specs"><li><b>Massing:</b> mid-rise downtown office block, standardized 3x2 footprint (front face 1.5x side face)</li><li><b>Levels:</b> tall stone ground story (storefront + flush double entrance doors, front only) + 4 warm-lit glass bands with vertical mullions (front 4x6 panes)</li><li><b>Facade:</b> warm gray-beige stone slab frame, full-height warm amber glass bands, thin flush corner columns</li><li><b>Signage:</b> rooftop plaque 'OFFICES' (exact white text, front roof edge, blank dark from behind); front ground-floor plaque '15 DOWNTOWN' (exact text, front only)</li><li><b>Roof:</b> double-band coping ring, plain flat deck, ONE dark slatted vent box, thin antenna at front-left corner</li><li><b>Rear:</b> 4 bands x 4 cols square warm panes; thin wide blank plaque plate standing upright at roof far edge; tall blank stone ground story, zero doors/openings/text</li><li><b>Sides:</b> 4 bands x 3 panes + 3 narrow ground-floor slits; right mirrors left</li><li><b>Base:</b> plain matte warm-gray slab, exactly 3:2, no bevel, no perspective</li></ul>
+</div></body></html>
