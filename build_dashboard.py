@@ -460,7 +460,19 @@ INDEX_TMPL = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 
 
 def pipe_card(name, p):
-    live = p['lease_held'] and p['pid_alive']
+    # A pipeline is RUNNING if it holds a lease and the worker is alive
+    # (pid alive) OR has a fresh heartbeat (<10 min). PIDs go stale when
+    # the sleep process dies but workers keep heartbeating via subagents.
+    hb_fresh = False
+    if p.get('heartbeat'):
+        try:
+            from datetime import datetime, timezone
+            hb = datetime.fromisoformat(p['heartbeat'])
+            age = (datetime.now(timezone.utc) - hb).total_seconds()
+            hb_fresh = age < 600
+        except Exception:
+            pass
+    live = p['lease_held'] and (p['pid_alive'] or hb_fresh)
     dot = 'live' if live else 'idle'
     label = 'RUNNING' if live else 'idle'
     rows = [f'<div class="name"><span class="dot {dot}"></span>{esc(name)} &mdash; {label}</div>']
