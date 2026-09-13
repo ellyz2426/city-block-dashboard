@@ -253,7 +253,35 @@ def collect_models(queue_status):
         mtimes = [mtime_of(os.path.join(mdir, f)) for f in os.listdir(mdir)]
         mtimes += [r['mtime'] for r in revs] + [g['mtime'] for g in glbs]
         has_build_activity = bool(builds) or bool(revs)
-        if glbs:
+        # A model is only 'finished' when it has a GLB AND a model-meta.json
+        # with 3 passing judges AND no unresolved Felix-flagged defects.
+        # A GLB alone just means a build exists — it may be mid-judging.
+        meta_path = os.path.join(mdir, 'model-meta.json')
+        meta_ok = False
+        if os.path.exists(meta_path):
+            try:
+                meta = json.load(open(meta_path))
+                judges = meta.get('judges', [])
+                meta_ok = (len(judges) == 3 and
+                           all(j.get('pass') and j.get('score', 0) >= 9.0
+                               for j in judges))
+            except Exception:
+                pass
+        felix_blocked = False
+        for qf in qa_logs:
+            try:
+                qfile = qf.get('file') if isinstance(qf, dict) else qf
+                content = open(os.path.join(mdir, qfile)).read()
+                if 'Felix-flagged defect' in content:
+                    # check if there's a resolution note after the last flag
+                    last_flag = content.rfind('Felix-flagged defect')
+                    after = content[last_flag:]
+                    if 'resolved' not in after.lower() and 'fixed in' not in after.lower():
+                        felix_blocked = True
+            except Exception:
+                pass
+        # in_progress if it's the pipeline's current model or has recent activity
+        if glbs and meta_ok and not felix_blocked:
             status = 'finished'
         elif has_build_activity:
             status = 'in_progress'
