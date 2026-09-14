@@ -321,6 +321,15 @@ def collect_models(queue_status):
                 rev_mtime = max([mtime_of(p) for p in pngs.values()] or [0])
                 revs.append({'rev': rev, 'renders': pngs, 'mtime': rev_mtime})
         revs.sort(key=lambda r: r['mtime'])
+        # Featured revision = latest rev with a COMPLETE render set (all 8 views).
+        # The builder exports the GLB in the same build run as the renders, so the
+        # GLB always belongs to the latest built rev; featuring the latest complete
+        # rev keeps renders + GLB a self-consistent pair. A newer partial rev
+        # (crashed/interrupted render) is reported separately as pending — never
+        # mixed with the finished GLB.
+        complete_revs = [r for r in revs if len(r['renders']) >= len(VIEWS)]
+        featured = complete_revs[-1] if complete_revs else (revs[-1] if revs else None)
+        pending_rev = (revs[-1]['rev'] if revs and (not featured or revs[-1]['rev'] != featured['rev']) else None)
         glbs = []
         for f in sorted(os.listdir(mdir)):
             if f.endswith('.glb'):
@@ -391,7 +400,8 @@ def collect_models(queue_status):
         items[mid] = {
             'id': mid,
             'revs': revs,
-            'latest_rev': revs[-1]['rev'] if revs else None,
+            'latest_rev': featured['rev'] if featured else None,
+            'pending_rev': pending_rev,
             'glbs': glbs,
             'latest_glb': glbs[-1] if glbs else None,
             'scores': scores,
@@ -954,6 +964,7 @@ ENTRY_TMPL = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <a class="back" href="../index.html">&larr; all assets</a>
 <h1>%%ID%%</h1><div class="sub">%%TITLE%%</div>
 <div class="stages" style="margin:10px 0">%%STAGES%%</div>
+%%PENDING%%
 <div class="kv">last updated <b>%%MTIME%%</b> &middot; <span id="notesCount">0</span> review notes on this asset</div>
 %%OUTSTANDING%%
 %%VIEWER%%
@@ -1077,6 +1088,18 @@ def render_entry(aid, sch, mod):
     html = html.replace('%%TITLE%%', esc(title[:80]))
     html = html.replace('%%REV%%', esc(rev))
     html = html.replace('%%STAGES%%', stages)
+    # Pending-revision banner: a newer rev exists but its render set is incomplete,
+    # so the page shows the latest finished rev. Say so instead of mixing revisions.
+    pending_html = ''
+    if mod and mod.get('pending_rev'):
+        pr = next((r for r in mod.get('revs', []) if r['rev'] == mod['pending_rev']), None)
+        n = len(pr['renders']) if pr else 0
+        state = 'awaiting judges' if n >= len(VIEWS) else 'renders %d/%d' % (n, len(VIEWS))
+        pending_html = (f'<div class="kv" style="border:1px solid #6a5a2a;background:#2a2415;'
+                        f'border-radius:8px;padding:8px 12px;margin:10px 0">'
+                        f'&#9203; <b>{esc(mod["pending_rev"])}</b> in progress ({state}) — '
+                        f'page shows the latest finished build.</div>')
+    html = html.replace('%%PENDING%%', pending_html)
     html = html.replace('%%MTIME%%', fmt_ts_long(mtime))
     html = html.replace('%%OUTSTANDING%%', outstanding + resolved)
     html = html.replace('%%TABS%%', tabs)
