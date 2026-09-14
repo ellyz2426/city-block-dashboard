@@ -196,27 +196,31 @@ def parse_scorecard(text):
     return scores
 
 
-def felix_feedback_states(text):
-    """Order-aware Felix-feedback tracking (mirrors model_audit).
+def feedback_states(text):
+    """Order-aware tracking for Felix-flagged AND Judge-flagged defects
+    (mirrors model_audit._feedback_states).
 
-    A RESOLVED line closes only the flags that precede it; a later re-flag
-    reopens the defect. Returns (outstanding, resolved), both newest-first:
-    outstanding [(name, rev, full)], resolved [(name, resolved_in_rev)].
+    Returns (outstanding, resolved), both newest-first: outstanding
+    [(name, rev, full, source)], resolved [(name, resolved_in_rev, source)].
     """
     events = []
     rawlines = text.splitlines()
     for i, line in enumerate(rawlines):
-        m = re.search(r'Felix-flagged defect:\s*(.+)', line)
+        m = re.search(r'((?:Felix|Judge)-flagged defect):\s*(.+)', line)
         if m:
-            d = m.group(1).strip()
+            fsrc = 'felix' if m.group(1).startswith('Felix') else 'judge'
+            d = m.group(2).strip()
             name = re.split(r'\s+—\s+', d)[0].split('(')[0].strip().lower()
             rm = re.search(r'\b([a-z]{2}\d+)\b', d)
             if name:
-                events.append(('flag', name, rm.group(1) if rm else '', d))
+                events.append(('flag', name, rm.group(1) if rm else '', d,
+                               fsrc))
             continue
-        m = re.search(r'RESOLVED\s*\(Felix-flagged defect\):\s*(.+)', line)
+        m = re.search(r'RESOLVED\s*\(((?:Felix|Judge)-flagged defect)\):\s*(.+)',
+                      line)
         if m:
-            r = m.group(1).strip()
+            rsrc = 'felix' if m.group(1).startswith('Felix') else 'judge'
+            r = m.group(2).strip()
             if (i + 1 < len(rawlines)
                     and not re.search(r'fixed in\s+[a-z]{2}\d+', r, re.I)):
                 r += ' ' + rawlines[i + 1].strip()
@@ -224,36 +228,42 @@ def felix_feedback_states(text):
                 continue  # instruction template, not a real resolution
             rname = re.split(r'\s+—\s+', r)[0].split('(')[0].strip().lower()
             if rname:
-                events.append(('resolve', rname, '', r))
+                events.append(('resolve', rname, '', r, rsrc))
     state, seq = {}, 0
-    for kind, name, rev, full in events:
+    for kind, name, rev, full, fsrc in events:
         seq += 1
+        key = (fsrc, name)
         if kind == 'flag':
-            if name not in state or state[name][0] != 'flag':
-                state[name] = ['flag', rev, full, '', seq]
-            elif rev and not state[name][1]:
-                state[name][1] = rev
-                state[name][4] = seq
+            if key not in state or state[key][0] != 'flag':
+                state[key] = ['flag', rev, full, '', seq, fsrc]
+            elif rev and not state[key][1]:
+                state[key][1] = rev
+                state[key][4] = seq
         else:
-            for n in list(state):
-                if state[n][0] == 'flag' and (n == name or n in name
-                                             or name in n):
+            for (s, n) in list(state):
+                ent = state[(s, n)]
+                if ent[0] == 'flag' and s == fsrc and (
+                        n == name or n in name or name in n):
                     rm = re.search(r'fixed in\s+([a-z]{2}\d+)', full, re.I)
-                    state[n] = ['resolved', state[n][1], state[n][2],
-                                rm.group(1) if rm else '', seq]
-    by_newest = sorted(state, key=lambda n: state[n][4], reverse=True)
-    outstanding = [[n, state[n][1], state[n][2]] for n in by_newest
-                   if state[n][0] == 'flag']
-    resolved = [[n, state[n][3]] for n in by_newest
-                if state[n][0] == 'resolved']
+                    state[(s, n)] = ['resolved', ent[1], ent[2],
+                                     rm.group(1) if rm else '', seq, fsrc]
+    by_newest = sorted(state, key=lambda k: state[k][4], reverse=True)
+    outstanding, resolved = [], []
+    for (s, n) in by_newest:
+        ent = state[(s, n)]
+        if ent[0] == 'flag':
+            outstanding.append([n, ent[1], ent[2], ent[5]])
+        else:
+            resolved.append([n, ent[3], ent[5]])
     return outstanding, resolved
 
 
 def outstanding_feedback(mdir):
-    """Unresolved Felix-flagged defects + recently resolved ones.
+    """Unresolved Felix/Judge-flagged defects + recently resolved ones.
 
     Returns (outstanding, resolved): outstanding is newest-first [{'name',
-    'rev'}]; resolved is newest-first [{'name', 'rev'}] (rev = fix rev).
+    'rev', 'src'}]; resolved is newest-first [{'name', 'rev', 'src'}]
+    (rev = fix rev, src = 'felix' or 'judge').
     """
     texts = []
     try:
@@ -269,9 +279,9 @@ def outstanding_feedback(mdir):
                               encoding='utf-8', errors='replace').read())
         except OSError:
             continue
-    outstanding, resolved = felix_feedback_states('\n'.join(texts))
-    return ([{'name': n, 'rev': r} for n, r, _ in outstanding],
-            [{'name': n, 'rev': r} for n, r in resolved])
+    outstanding, resolved = feedback_states('\n'.join(texts))
+    return ([{'name': n, 'rev': r, 'src': s} for n, r, _, s in outstanding],
+            [{'name': n, 'rev': r, 'src': s} for n, r, s in resolved])
 
 
 def collect_models(queue_status):
@@ -542,6 +552,9 @@ border-bottom:1px solid var(--border);padding-bottom:6px}
 .ohint{font-size:12px;color:var(--muted);margin-top:6px}
 .outstanding.clear{border-color:#3f6b3f;background:#1c2b1c}
 .oclear{font-size:14px;color:#9fd69f;margin-top:6px}
+.srcchip{display:inline-block;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:1px}
+.srcchip.felix{background:#3a2c12;color:#e8b84b;border:1px solid #8a6a2a}
+.srcchip.judge{background:#1c2c4a;color:#8fb8ff;border:1px solid #3a5a8a}
 .resolvedbox{background:#1c2b1c;border:1px solid #3f6b3f;border-radius:10px;padding:12px 14px;margin:12px 0}
 .rtitle{font-weight:700;color:#9fd69f;margin-bottom:6px}
 .resolvedbox ul{margin:6px 0 6px 18px;padding:0}
@@ -1003,21 +1016,23 @@ def render_entry(aid, sch, mod):
     items = (mod['outstanding'] if mod and mod.get('outstanding') else [])
     if items:
         lis = ''.join(
-            '<li><b>{}</b>{}</li>'.format(
+            '<li><span class="srcchip {}">{}</span><b>{}</b>{}</li>'.format(
+                d.get('src', 'felix'),
+                'Felix' if d.get('src', 'felix') == 'felix' else 'Judge',
                 esc(d['name']),
                 f' <span class="orev">{esc(d["rev"])}</span>' if d['rev'] else '')
             for d in items)
         outstanding = (
             '<div class="outstanding"><div class="otitle">Outstanding feedback'
             f' ({len(items)})</div><ul>{lis}</ul>'
-            '<div class="ohint">Felix-flagged, not yet resolved &mdash; every '
+            '<div class="ohint">Flagged, not yet resolved &mdash; every '
             'judging pass re-checks each one; a targeted PASS auto-resolves it. '
             'No waiting on Felix.</div></div>')
     else:
         outstanding = (
             '<div class="outstanding clear"><div class="otitle">Outstanding '
             'feedback (0)</div>'
-            '<div class="oclear">None &mdash; every Felix-flagged defect is '
+            '<div class="oclear">None &mdash; every flagged defect is '
             'resolved. If the model is still in progress, it is awaiting '
             'judge verdicts, not fixes.</div></div>')
     resolved = ''
@@ -1025,7 +1040,9 @@ def render_entry(aid, sch, mod):
               else [])
     if ritems:
         rlis = ''.join(
-            '<li>{}{}</li>'.format(
+            '<li><span class="srcchip {}">{}</span>{}{}</li>'.format(
+                d.get('src', 'felix'),
+                'Felix' if d.get('src', 'felix') == 'felix' else 'Judge',
                 esc(d['name']),
                 f' <span class="orev">fixed in {esc(d["rev"])}</span>'
                 if d['rev'] else '')
