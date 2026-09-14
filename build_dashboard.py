@@ -196,51 +196,82 @@ def parse_scorecard(text):
     return scores
 
 
-def outstanding_feedback(mdir):
-    """Unresolved Felix-flagged defects from the model's QA logs.
+def felix_feedback_states(text):
+    """Order-aware Felix-feedback tracking (mirrors model_audit).
 
-    Mirrors model_audit._felix_rejection matching: a defect counts as
-    resolved only when a later 'RESOLVED (Felix-flagged defect):' line names
-    the same defect (matched on the name = text before any parenthetical).
-    Returns newest-first list of {'name', 'rev'} dicts.
+    A RESOLVED line closes only the flags that precede it; a later re-flag
+    reopens the defect. Returns (outstanding, resolved), both newest-first:
+    outstanding [(name, rev, full)], resolved [(name, resolved_in_rev)].
     """
-    flagged, resolved = [], []
+    events = []
+    rawlines = text.splitlines()
+    for i, line in enumerate(rawlines):
+        m = re.search(r'Felix-flagged defect:\s*(.+)', line)
+        if m:
+            d = m.group(1).strip()
+            name = re.split(r'\s+—\s+', d)[0].split('(')[0].strip().lower()
+            rm = re.search(r'\b([a-z]{2}\d+)\b', d)
+            if name:
+                events.append(('flag', name, rm.group(1) if rm else '', d))
+            continue
+        m = re.search(r'RESOLVED\s*\(Felix-flagged defect\):\s*(.+)', line)
+        if m:
+            r = m.group(1).strip()
+            if (i + 1 < len(rawlines)
+                    and not re.search(r'fixed in\s+[a-z]{2}\d+', r, re.I)):
+                r += ' ' + rawlines[i + 1].strip()
+            if '<name>' in r:
+                continue  # instruction template, not a real resolution
+            rname = re.split(r'\s+—\s+', r)[0].split('(')[0].strip().lower()
+            if rname:
+                events.append(('resolve', rname, '', r))
+    state, seq = {}, 0
+    for kind, name, rev, full in events:
+        seq += 1
+        if kind == 'flag':
+            if name not in state or state[name][0] != 'flag':
+                state[name] = ['flag', rev, full, '', seq]
+            elif rev and not state[name][1]:
+                state[name][1] = rev
+                state[name][4] = seq
+        else:
+            for n in list(state):
+                if state[n][0] == 'flag' and (n == name or n in name
+                                             or name in n):
+                    rm = re.search(r'fixed in\s+([a-z]{2}\d+)', full, re.I)
+                    state[n] = ['resolved', state[n][1], state[n][2],
+                                rm.group(1) if rm else '', seq]
+    by_newest = sorted(state, key=lambda n: state[n][4], reverse=True)
+    outstanding = [[n, state[n][1], state[n][2]] for n in by_newest
+                   if state[n][0] == 'flag']
+    resolved = [[n, state[n][3]] for n in by_newest
+                if state[n][0] == 'resolved']
+    return outstanding, resolved
+
+
+def outstanding_feedback(mdir):
+    """Unresolved Felix-flagged defects + recently resolved ones.
+
+    Returns (outstanding, resolved): outstanding is newest-first [{'name',
+    'rev'}]; resolved is newest-first [{'name', 'rev'}] (rev = fix rev).
+    """
+    texts = []
     try:
         files = sorted(os.listdir(mdir))
     except OSError:
-        return []
+        return [], []
     for f in files:
         if not (f == 'model-qa-log.md'
                 or re.match(r'(model-qa-log|qa-log)-.+\.md$', f)):
             continue
         try:
-            text = open(os.path.join(mdir, f),
-                        encoding='utf-8', errors='replace').read()
+            texts.append(open(os.path.join(mdir, f),
+                              encoding='utf-8', errors='replace').read())
         except OSError:
             continue
-        for line in text.splitlines():
-            m = re.search(r'Felix-flagged defect:\s*(.+)', line)
-            if m:
-                flagged.append(m.group(1).strip())
-            m = re.search(r'RESOLVED\s*\(Felix-flagged defect\):\s*(.+)', line)
-            if m:
-                resolved.append(m.group(1).strip().lower())
-    out, seen = [], set()
-    for defect in reversed(flagged):  # newest first
-        name = re.split(r'\s+—\s+', defect)[0]  # drop trailing " — Felix quote"
-        name = name.split('(')[0].strip()
-        key = name.lower()
-        if not key or key in seen:
-            continue
-        if any(key in r for r in resolved):
-            continue
-        seen.add(key)
-        rev = ''
-        rm = re.search(r'\b([a-z]{2}\d+)\b', defect)
-        if rm:
-            rev = rm.group(1)
-        out.append({'name': name, 'rev': rev})
-    return out
+    outstanding, resolved = felix_feedback_states('\n'.join(texts))
+    return ([{'name': n, 'rev': r} for n, r, _ in outstanding],
+            [{'name': n, 'rev': r} for n, r in resolved])
 
 
 def collect_models(queue_status):
@@ -345,6 +376,7 @@ def collect_models(queue_status):
             status = qs or 'pending'
         all_pass = (scores and all(v[0] == 'PASS' for v in scores.values())
                     and len(scores) == 8)
+        out_fb, res_fb = outstanding_feedback(mdir)
         items[mid] = {
             'id': mid,
             'revs': revs,
@@ -358,7 +390,8 @@ def collect_models(queue_status):
             'status': status,
             'queue_status': queue_status.get(mid, '—'),
             'felix_blocked': felix_blocked,
-            'outstanding': outstanding_feedback(mdir),
+            'outstanding': out_fb,
+            'recently_resolved': res_fb,
             'mtime': max(mtimes) if mtimes else 0,
             'n_revs': len(revs),
         }
@@ -505,6 +538,10 @@ border-bottom:1px solid var(--border);padding-bottom:6px}
 .outstanding li{margin:4px 0;font-size:14px}
 .orev{font-size:12px;color:var(--muted);border:1px solid var(--muted);border-radius:4px;padding:0 5px;margin-left:6px}
 .ohint{font-size:12px;color:var(--muted);margin-top:6px}
+.resolvedbox{background:#1c2b1c;border:1px solid #3f6b3f;border-radius:10px;padding:12px 14px;margin:12px 0}
+.rtitle{font-weight:700;color:#9fd69f;margin-bottom:6px}
+.resolvedbox ul{margin:6px 0 6px 18px;padding:0}
+.resolvedbox li{margin:4px 0;font-size:14px;color:var(--text)}
 /* entry list */
 .entry{display:flex;gap:14px;background:var(--card);border:1px solid var(--border);
 border-radius:12px;padding:12px;margin:10px 0;text-decoration:none;color:var(--text)}
@@ -947,6 +984,7 @@ def render_entry(aid, sch, mod):
         f'<button class="viewtab" data-view="{v}">{VIEW_LABELS[v]}</button>' for v in VIEWS)
     mtime = max(sch['mtime'] if sch else 0, mod['mtime'] if mod else 0)
     # outstanding Felix feedback (unresolved flagged defects from QA logs)
+    # + recently resolved (auto-resolved by targeted judges — Felix audits async)
     outstanding = ''
     items = (mod['outstanding'] if mod and mod.get('outstanding') else [])
     if items:
@@ -958,8 +996,26 @@ def render_entry(aid, sch, mod):
         outstanding = (
             '<div class="outstanding"><div class="otitle">Outstanding feedback'
             f' ({len(items)})</div><ul>{lis}</ul>'
-            '<div class="ohint">Felix-flagged, not yet resolved &mdash; each gets '
-            'a targeted check on the next revision before holistic judging.</div></div>')
+            '<div class="ohint">Felix-flagged, not yet resolved &mdash; every '
+            'judging pass re-checks each one; a targeted PASS auto-resolves it. '
+            'No waiting on Felix.</div></div>')
+    resolved = ''
+    ritems = (mod['recently_resolved'] if mod and mod.get('recently_resolved')
+              else [])
+    if ritems:
+        rlis = ''.join(
+            '<li>{}{}</li>'.format(
+                esc(d['name']),
+                f' <span class="orev">fixed in {esc(d["rev"])}</span>'
+                if d['rev'] else '')
+            for d in ritems[:6])
+        more = (f'<div class="ohint">+{len(ritems) - 6} more</div>'
+                if len(ritems) > 6 else '')
+        resolved = (
+            '<div class="resolvedbox"><div class="rtitle">Recently resolved '
+            f'({len(ritems)})</div><ul>{rlis}</ul>{more}'
+            '<div class="ohint">Auto-resolved by targeted judges; '
+            're-flag anytime from review.</div></div>')
     html = ENTRY_TMPL
     html = html.replace('%%CSS%%', CSS)
     html = html.replace('%%ID%%', esc(aid))
@@ -967,7 +1023,7 @@ def render_entry(aid, sch, mod):
     html = html.replace('%%REV%%', esc(rev))
     html = html.replace('%%STAGES%%', stages)
     html = html.replace('%%MTIME%%', fmt_ts_long(mtime))
-    html = html.replace('%%OUTSTANDING%%', outstanding)
+    html = html.replace('%%OUTSTANDING%%', outstanding + resolved)
     html = html.replace('%%TABS%%', tabs)
     html = html.replace('%%VIEWS_JSON%%', json.dumps(views_data))
     html = html.replace('%%REVIEW_JS%%', REVIEW_JS)
