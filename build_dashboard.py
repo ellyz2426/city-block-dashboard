@@ -339,6 +339,14 @@ def collect_models(queue_status):
                 p = os.path.join(mdir, f)
                 glbs.append({'file': f, 'mtime': mtime_of(p), 'size': os.path.getsize(p)})
         glbs.sort(key=lambda g: g['mtime'])
+        # GLB->rev pairing by disk truth (see comment at featured-rev above):
+        # the GLB belongs to the newest rev fully rendered before its export.
+        glb_rev = None
+        if glbs and revs:
+            gmt = glbs[-1]['mtime']
+            cands = [r for r in revs if r['mtime'] <= gmt]
+            if cands:
+                glb_rev = max(cands, key=lambda r: r['mtime'])['rev']
         scores = {}
         qa_logs = []
         for f in sorted(os.listdir(mdir)):
@@ -365,8 +373,6 @@ def collect_models(queue_status):
         has_build_activity = bool(builds) or bool(revs)
         meta_path = os.path.join(mdir, 'model-meta.json')
         meta_ok = False
-        glb_rev = None  # rev the exported GLB actually belongs to (meta records
-                        # the completed/exported rev; may lag the featured rev)
         if os.path.exists(meta_path):
             try:
                 meta = json.load(open(meta_path))
@@ -374,9 +380,14 @@ def collect_models(queue_status):
                 meta_ok = (len(judges) == 3 and
                            all(j.get('pass') and j.get('score', 0) >= 9.0
                                for j in judges))
-                glb_rev = meta.get('rev') or None
             except Exception:
                 pass
+        # GLB->rev pairing by DISK TRUTH: the GLB belongs to the newest rev
+        # whose render set was complete (max render mtime) at or before the
+        # GLB export. model-meta 'rev' is NOT used — it goes stale after
+        # post-completion tweaks (e.g. 02-apartment meta said bs14 while the
+        # exported GLB was bs15's; 01-cafe bs11 tweak re-exported the GLB
+        # without touching meta).
         felix_blocked = False
         for qf in qa_logs:
             try:
