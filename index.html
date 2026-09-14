@@ -31,6 +31,11 @@ border-bottom:1px solid var(--border);padding-bottom:6px}
 .srcchip{display:inline-block;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:1px}
 .srcchip.felix{background:#3a2c12;color:#e8b84b;border:1px solid #8a6a2a}
 .srcchip.judge{background:#1c2c4a;color:#8fb8ff;border:1px solid #3a5a8a}
+details.fb summary{cursor:pointer;list-style:none}
+details.fb summary::-webkit-details-marker{display:none}
+details.fb summary::before{content:'▸ ';color:#8a8a8a;font-size:12px}
+details.fb[open] summary::before{content:'▾ '}
+.fbdetail{font-size:13px;color:#d8d0bd;margin:6px 0 4px 18px;line-height:1.45}
 .resolvedbox{background:#1c2b1c;border:1px solid #3f6b3f;border-radius:10px;padding:12px 14px;margin:12px 0}
 .rtitle{font-weight:700;color:#9fd69f;margin-bottom:6px}
 .resolvedbox ul{margin:6px 0 6px 18px;padding:0}
@@ -112,8 +117,8 @@ border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;disp
 </style></head>
 <body><div class="wrap">
 <header class="top"><div><h1>🏙️ City-Block Asset Pipeline</h1>
-<div class="sub">Live observability &mdash; generated 2026-09-13 17:37 PDT</div></div></header>
-<div class="pipes"><div class="pipe"><div class="name"><span class="dot live"></span>3D modeling pipeline &mdash; RUNNING</div><div class="kv">worker <b>mtick-20260914-0026</b></div><div class="kv">heartbeat <b>Sep 13, 17:35</b></div><div class="kv">working on <b>02-apartment-building</b> &middot; phase <b>judging</b> &middot; rev <b>bs14</b></div><div class="kv">bs14 rendered 8/8 + 5c-bis self-check PASS; 3 fresh holistic judges dispatched</div></div><div class="pipe"><div class="name"><span class="dot live"></span>Schematic pipeline &mdash; RUNNING</div><div class="kv">worker <b>stick-20260913-2333</b></div><div class="kv">heartbeat <b>Sep 13, 17:29</b></div><div class="kv">working on <b>chinatown-block-v1</b> &middot; phase <b>judging</b> &middot; rev <b>50-teahouse</b></div><div class="kv">front-r10 judge PASS 9.05 (7/8 passing); angle-bl-r8 building (last view)</div></div></div>
+<div class="sub">Live observability &mdash; generated 2026-09-13 17:41 PDT</div></div></header>
+<div class="pipes"><div class="pipe"><div class="name"><span class="dot live"></span>3D modeling pipeline &mdash; RUNNING</div><div class="kv">worker <b>mtick-20260914-0026</b></div><div class="kv">heartbeat <b>Sep 13, 17:35</b></div><div class="kv">working on <b>02-apartment-building</b> &middot; phase <b>judging</b> &middot; rev <b>bs14</b></div><div class="kv">bs14 rendered 8/8 + 5c-bis self-check PASS; 3 fresh holistic judges dispatched</div></div><div class="pipe"><div class="name"><span class="dot live"></span>Schematic pipeline &mdash; RUNNING</div><div class="kv">worker <b>stick-20260914-0040</b></div><div class="kv">heartbeat <b>Sep 13, 17:40</b></div><div class="kv">working on <b>chinatown-block-v1</b> &middot; phase <b>judging</b> &middot; rev <b>50-teahouse</b></div><div class="kv">Judging 50-teahouse angle-bl-r9 (last unjudged view); then footprint gate + filing</div></div></div>
 <div class="fbbox">
 <button class="btn" id="copyFeedback">📋 Copy feedback</button>
 <span class="count" id="fbCount">0</span>

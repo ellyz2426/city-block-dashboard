@@ -280,7 +280,8 @@ def outstanding_feedback(mdir):
         except OSError:
             continue
     outstanding, resolved = feedback_states('\n'.join(texts))
-    return ([{'name': n, 'rev': r, 'src': s} for n, r, _, s in outstanding],
+    return ([{'name': n, 'rev': r, 'src': s, 'full': f}
+             for n, r, f, s in outstanding],
             [{'name': n, 'rev': r, 'src': s} for n, r, s in resolved])
 
 
@@ -555,6 +556,11 @@ border-bottom:1px solid var(--border);padding-bottom:6px}
 .srcchip{display:inline-block;font-size:11px;font-weight:700;border-radius:4px;padding:1px 6px;margin-right:6px;vertical-align:1px}
 .srcchip.felix{background:#3a2c12;color:#e8b84b;border:1px solid #8a6a2a}
 .srcchip.judge{background:#1c2c4a;color:#8fb8ff;border:1px solid #3a5a8a}
+details.fb summary{cursor:pointer;list-style:none}
+details.fb summary::-webkit-details-marker{display:none}
+details.fb summary::before{content:'▸ ';color:#8a8a8a;font-size:12px}
+details.fb[open] summary::before{content:'▾ '}
+.fbdetail{font-size:13px;color:#d8d0bd;margin:6px 0 4px 18px;line-height:1.45}
 .resolvedbox{background:#1c2b1c;border:1px solid #3f6b3f;border-radius:10px;padding:12px 14px;margin:12px 0}
 .rtitle{font-weight:700;color:#9fd69f;margin-bottom:6px}
 .resolvedbox ul{margin:6px 0 6px 18px;padding:0}
@@ -971,6 +977,23 @@ ENTRY_TMPL = """<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 </body></html>"""
 
 
+def _fb_item(d):
+    """One outstanding-feedback <li>: expandable <details> so Felix can tap
+    to read the full actionable finding, not just the criterion name."""
+    src = d.get('src', 'felix')
+    chip = ('<span class="srcchip {}">{}</span>'.format(
+        src, 'Felix' if src == 'felix' else 'Judge'))
+    rev = (f' <span class="orev">{esc(d["rev"])}</span>'
+           if d.get('rev') else '')
+    full = (d.get('full') or '').strip()
+    name = (d.get('name') or '').strip()
+    if full and name and full.lower().startswith(name.lower()):
+        full = full[len(name):].lstrip(' —-–:').strip()
+    detail = (f'<div class="fbdetail">{esc(full)}</div>' if full else '')
+    return (f'<li><details class="fb"><summary>{chip}<b>{esc(d["name"])}'
+            f'</b>{rev}</summary>{detail}</details></li>')
+
+
 def render_entry(aid, sch, mod):
     stages = ''.join(f'<span class="stage {cls}">{esc(lbl)}</span>'
                      for lbl, cls in entry_stages(sch, mod))
@@ -1015,13 +1038,7 @@ def render_entry(aid, sch, mod):
     # outstanding ones.")
     items = (mod['outstanding'] if mod and mod.get('outstanding') else [])
     if items:
-        lis = ''.join(
-            '<li><span class="srcchip {}">{}</span><b>{}</b>{}</li>'.format(
-                d.get('src', 'felix'),
-                'Felix' if d.get('src', 'felix') == 'felix' else 'Judge',
-                esc(d['name']),
-                f' <span class="orev">{esc(d["rev"])}</span>' if d['rev'] else '')
-            for d in items)
+        lis = ''.join(_fb_item(d) for d in items)
         outstanding = (
             '<div class="outstanding"><div class="otitle">Outstanding feedback'
             f' ({len(items)})</div><ul>{lis}</ul>'
