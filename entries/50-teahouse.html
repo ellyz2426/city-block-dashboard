@@ -1,6 +1,6 @@
 <!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>02-apartment-building &mdash; asset review</title><style>
+<title>50-teahouse &mdash; asset review</title><style>
 :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#e6edf3;
 --muted:#8b949e;--green:#3fb950;--yellow:#d29922;--red:#f85149;--blue:#58a6ff}
 *{box-sizing:border-box}body{background:var(--bg);color:var(--text);
@@ -115,45 +115,13 @@ table.stats td:first-child{color:var(--text)}
 #dumpbox{width:100%;height:180px;background:var(--bg);color:var(--text);
 border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;display:none}
 </style></head>
-<body data-asset="02-apartment-building" data-rev="bs14"><div class="wrap">
+<body data-asset="50-teahouse" data-rev="—"><div class="wrap">
 <a class="back" href="../index.html">&larr; all assets</a>
-<h1>02-apartment-building</h1><div class="sub">Apartment Building</div>
-<div class="stages" style="margin:10px 0"><span class="stage ok">Schematics ✓</span><span class="stage work">3D modeling · 14 revs (judging)</span></div>
-<div class="kv">last updated <b>2026-09-13 17:49 PDT</b> &middot; <span id="notesCount">0</span> review notes on this asset</div>
-<div class="outstanding"><div class="otitle">Outstanding feedback (2)</div><ul><li><details class="fb"><summary><span class="srcchip judge">Judge</span><b>details</b> <span class="orev">bs13</span></summary><div class="fbdetail">front upper windows wear gray stone trim, reference shows brown wood frames with no stone (fidelity judge, bs13) — &quot;front upper/middle windows: model has gray stone surrounds with keystones; reference (front AND angle-front-right) shows brown wooden rounded frames, no stone. window() trim=True must be dropped for the 4 front uppers. Also: parapet corner caps should be gray stone (model: terracotta); parapet rim reads thinner than reference's chunky rounded rim (ref ~14% of facade W).&quot;</div></details></li><li><details class="fb"><summary><span class="srcchip judge">Judge</span><b>materials</b> <span class="orev">bs13</span></summary><div class="fbdetail">front upper window frames + balcony railings miscolored (materials judge, bs13) — &quot;4 front upper window frames + muntin crosses render gray stone vs reference dark brown wood (ref ~(83,75,55)); 4 front balcony railings render medium gray (136,123,116) vs reference dark brown per contact-sheet '4 dark-railed balconies'; coping renders bright orange (206,109,78) vs reference muted milk-chocolate brown&quot;</div></details></li></ul><div class="ohint">Flagged, not yet resolved &mdash; every judging pass re-checks each one; a targeted PASS auto-resolves it. No waiting on Felix.</div></div><div class="resolvedbox"><div class="rtitle">Recently resolved (10)</div><ul><li><span class="srcchip felix">Felix</span>door arch voussoirs inconsistent + gap between arch frame and door <span class="orev">fixed in bs13</span></li><li><span class="srcchip felix">Felix</span>proportions <span class="orev">fixed in bs9</span></li><li><span class="srcchip felix">Felix</span>windows too large <span class="orev">fixed in bs9</span></li><li><span class="srcchip felix">Felix</span>footprint not square <span class="orev">fixed in bs9</span></li><li><span class="srcchip felix">Felix</span>ground-floor window/door column alignment <span class="orev">fixed in bs10</span></li><li><span class="srcchip felix">Felix</span>left windows larger than right <span class="orev">fixed in bs10</span></li></ul><div class="ohint">+4 more</div><div class="ohint">Auto-resolved by targeted judges; re-flag anytime from review.</div></div>
-<h2>3D viewer &mdash; 02-apartment-building.glb</h2><div id="viewer"></div><div class="kv" id="vstat">loading…</div><script>const GLB_URL="../assets/models/02-apartment-building/02-apartment-building.glb";</script>
-<script type="importmap">
-{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js",
-"three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
-</script>
-<script type="module">
-import * as THREE from 'three';
-import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
-import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
-const el=document.getElementById('viewer');
-const renderer=new THREE.WebGLRenderer({antialias:true});
-renderer.setPixelRatio(Math.min(devicePixelRatio,2));
-renderer.setSize(el.clientWidth,420);
-renderer.outputColorSpace=THREE.SRGBColorSpace;
-el.appendChild(renderer.domElement);
-const scene=new THREE.Scene();scene.background=new THREE.Color(0x0d1117);
-const cam=new THREE.PerspectiveCamera(45,el.clientWidth/420,0.01,100);
-cam.position.set(3.2,2.2,3.2);
-const ctl=new OrbitControls(cam,renderer.domElement);
-scene.add(new THREE.HemisphereLight(0xffffff,0x334455,1.1));
-const d=new THREE.DirectionalLight(0xfff2dd,2.2);d.position.set(4,6,3);scene.add(d);
-const d2=new THREE.DirectionalLight(0x88aaff,0.7);d2.position.set(-4,3,-3);scene.add(d2);
-new GLTFLoader().load(GLB_URL,g=>{
-  const o=g.scene;scene.add(o);
-  const b=new THREE.Box3().setFromObject(o),c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());
-  const m=Math.max(s.x,s.y,s.z);cam.position.set(c.x+m*1.1,c.y+m*0.8,c.z+m*1.1);
-  ctl.target.copy(c);ctl.update();
-  document.getElementById('vstat').textContent='loaded ✓ drag to orbit · scroll to zoom';
-},undefined,e=>{document.getElementById('vstat').textContent='failed to load GLB';});
-(function loop(){requestAnimationFrame(loop);ctl.update();renderer.render(scene,cam);})();
-addEventListener('resize',()=>{renderer.setSize(el.clientWidth,420);
-cam.aspect=el.clientWidth/420;cam.updateProjectionMatrix();});
-</script>
+<h1>50-teahouse</h1><div class="sub">Teahouse</div>
+<div class="stages" style="margin:10px 0"><span class="stage ok">Schematics ✓</span><span class="stage idle">3D not started</span></div>
+<div class="kv">last updated <b>2026-09-13 17:51 PDT</b> &middot; <span id="notesCount">0</span> review notes on this asset</div>
+<div class="outstanding clear"><div class="otitle">Outstanding feedback (0)</div><div class="oclear">None &mdash; every flagged defect is resolved. If the model is still in progress, it is awaiting judge verdicts, not fixes.</div></div>
+
 <h2 id="review">Review &mdash; render vs schematic</h2>
 <div class="reviewbar">
 <div class="toggle on" id="reviewToggle"><div class="pill"></div><span>Review mode</span></div>
@@ -161,7 +129,7 @@ cam.aspect=el.clientWidth/420;cam.updateProjectionMatrix();});
 </div>
 <div class="viewtabs"><button class="viewtab" data-view="front">Front</button><button class="viewtab" data-view="back">Back</button><button class="viewtab" data-view="left">Left</button><button class="viewtab" data-view="right">Right</button><button class="viewtab" data-view="top">Top</button><button class="viewtab" data-view="bottom">Bottom</button><button class="viewtab" data-view="angle-front-right">Angle FR</button><button class="viewtab" data-view="angle-back-left">Angle BL</button></div>
 <div class="compare">
-<div class="imgwrap" id="wrap-render"><img alt="3D render"><div class="imglbl">3D render &middot; bs14</div>
+<div class="imgwrap" id="wrap-render"><img alt="3D render"><div class="imglbl">3D render &middot; —</div>
 <div class="nonimg" style="display:none;min-height:200px;align-items:center;justify-content:center;color:var(--muted)">no render for this view yet</div></div>
 <div class="imgwrap" id="wrap-schematic"><img alt="schematic"><div class="imglbl">schematic</div>
 <div class="nonimg" style="display:none;min-height:200px;align-items:center;justify-content:center;color:var(--muted)">no schematic for this view</div></div>
@@ -169,7 +137,7 @@ cam.aspect=el.clientWidth/420;cam.updateProjectionMatrix();});
 <h2>Notes on this asset</h2>
 <div class="notes" id="notesList"></div>
 </div>
-<script>var VIEWS_DATA={"front": {"render": "../assets/models/02-apartment-building/renders/bs14/front.png", "schematic": "../assets/schematics/02-apartment-building/front.jpg"}, "back": {"render": "../assets/models/02-apartment-building/renders/bs14/back.png", "schematic": "../assets/schematics/02-apartment-building/back.jpg"}, "left": {"render": "../assets/models/02-apartment-building/renders/bs14/left.png", "schematic": "../assets/schematics/02-apartment-building/left.jpg"}, "right": {"render": "../assets/models/02-apartment-building/renders/bs14/right.png", "schematic": "../assets/schematics/02-apartment-building/right.jpg"}, "top": {"render": "../assets/models/02-apartment-building/renders/bs14/top.png", "schematic": "../assets/schematics/02-apartment-building/top.jpg"}, "bottom": {"render": "../assets/models/02-apartment-building/renders/bs14/bottom.png", "schematic": "../assets/schematics/02-apartment-building/bottom.jpg"}, "angle-front-right": {"render": "../assets/models/02-apartment-building/renders/bs14/angle-front-right.png", "schematic": "../assets/schematics/02-apartment-building/angle-front-right.jpg"}, "angle-back-left": {"render": "../assets/models/02-apartment-building/renders/bs14/angle-back-left.png", "schematic": "../assets/schematics/02-apartment-building/angle-back-left.jpg"}};</script>
+<script>var VIEWS_DATA={"front": {"render": null, "schematic": "../assets/schematics/50-teahouse/front.jpg"}, "back": {"render": null, "schematic": "../assets/schematics/50-teahouse/back.jpg"}, "left": {"render": null, "schematic": "../assets/schematics/50-teahouse/left.jpg"}, "right": {"render": null, "schematic": "../assets/schematics/50-teahouse/right.jpg"}, "top": {"render": null, "schematic": "../assets/schematics/50-teahouse/top.jpg"}, "bottom": {"render": null, "schematic": "../assets/schematics/50-teahouse/bottom.jpg"}, "angle-front-right": {"render": null, "schematic": "../assets/schematics/50-teahouse/angle-front-right.jpg"}, "angle-back-left": {"render": null, "schematic": "../assets/schematics/50-teahouse/angle-back-left.jpg"}};</script>
 <script>
 (function(){
 var KEY='cb_feedback_v1';
