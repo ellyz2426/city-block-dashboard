@@ -392,6 +392,8 @@ def collect_models(queue_status):
             'felix_blocked': felix_blocked,
             'outstanding': out_fb,
             'recently_resolved': res_fb,
+            'live_phase': live_phase if live_model == mid else '',
+            'live_active': live_active,
             'mtime': max(mtimes) if mtimes else 0,
             'n_revs': len(revs),
         }
@@ -538,6 +540,8 @@ border-bottom:1px solid var(--border);padding-bottom:6px}
 .outstanding li{margin:4px 0;font-size:14px}
 .orev{font-size:12px;color:var(--muted);border:1px solid var(--muted);border-radius:4px;padding:0 5px;margin-left:6px}
 .ohint{font-size:12px;color:var(--muted);margin-top:6px}
+.outstanding.clear{border-color:#3f6b3f;background:#1c2b1c}
+.oclear{font-size:14px;color:#9fd69f;margin-top:6px}
 .resolvedbox{background:#1c2b1c;border:1px solid #3f6b3f;border-radius:10px;padding:12px 14px;margin:12px 0}
 .rtitle{font-weight:700;color:#9fd69f;margin-bottom:6px}
 .resolvedbox ul{margin:6px 0 6px 18px;padding:0}
@@ -715,10 +719,17 @@ def entry_stages(sch, mod):
         if st == 'finished':
             stages.append(('3D modeling ✓', 'ok'))
         elif st == 'in_progress':
-            q = mod['queue_status']
             lbl = f'3D modeling · {mod["n_revs"]} revs'
-            if q and q not in ('—', 'in_progress'):
-                lbl += f' ({q})'
+            # Prefer the live worker phase over the (possibly stale) queue
+            # status: "fixing" from the queue while the worker is judging is
+            # exactly the contradiction Felix flagged 2026-09-13.
+            phase = mod.get('live_phase') or mod['queue_status']
+            if mod.get('live_active') and mod.get('live_phase'):
+                phase = mod['live_phase']
+            elif phase in ('—', 'in_progress'):
+                phase = ''
+            if phase:
+                lbl += f' ({phase})'
             stages.append((lbl, 'work'))
         else:
             stages.append((f'3D {st}', 'idle'))
@@ -985,7 +996,10 @@ def render_entry(aid, sch, mod):
     mtime = max(sch['mtime'] if sch else 0, mod['mtime'] if mod else 0)
     # outstanding Felix feedback (unresolved flagged defects from QA logs)
     # + recently resolved (auto-resolved by targeted judges — Felix audits async)
-    outstanding = ''
+    # The outstanding box ALWAYS renders: an empty state ("None — all
+    # resolved") is information, a missing box is ambiguity. (Felix 2026-09-13:
+    # "if it's still in the fixing state, I should be able to see the
+    # outstanding ones.")
     items = (mod['outstanding'] if mod and mod.get('outstanding') else [])
     if items:
         lis = ''.join(
@@ -999,6 +1013,13 @@ def render_entry(aid, sch, mod):
             '<div class="ohint">Felix-flagged, not yet resolved &mdash; every '
             'judging pass re-checks each one; a targeted PASS auto-resolves it. '
             'No waiting on Felix.</div></div>')
+    else:
+        outstanding = (
+            '<div class="outstanding clear"><div class="otitle">Outstanding '
+            'feedback (0)</div>'
+            '<div class="oclear">None &mdash; every Felix-flagged defect is '
+            'resolved. If the model is still in progress, it is awaiting '
+            'judge verdicts, not fixes.</div></div>')
     resolved = ''
     ritems = (mod['recently_resolved'] if mod and mod.get('recently_resolved')
               else [])
