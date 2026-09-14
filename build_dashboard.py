@@ -322,11 +322,14 @@ def collect_models(queue_status):
                 revs.append({'rev': rev, 'renders': pngs, 'mtime': rev_mtime})
         revs.sort(key=lambda r: r['mtime'])
         # Featured revision = latest rev with a COMPLETE render set (all 8 views).
-        # The builder exports the GLB in the same build run as the renders, so the
-        # GLB always belongs to the latest built rev; featuring the latest complete
-        # rev keeps renders + GLB a self-consistent pair. A newer partial rev
-        # (crashed/interrupted render) is reported separately as pending — never
-        # mixed with the finished GLB.
+        # GLB export happens once per completed build, NOT per rendered rev, so
+        # the GLB can lag the featured renders (e.g. a model mid-fix with revs
+        # bs10-bs13 rendered but the GLB still from bs9). Renders and GLB are a
+        # self-consistent pair only when the GLB's rev matches the featured rev;
+        # otherwise the viewer section gets an explicit rev label + mismatch
+        # note (Felix 2026-09-14: unlabeled revision mixing on one page is a bug).
+        # A newer partial rev (crashed/interrupted render) is reported separately
+        # as pending — never mixed with the finished GLB.
         complete_revs = [r for r in revs if len(r['renders']) >= len(VIEWS)]
         featured = complete_revs[-1] if complete_revs else (revs[-1] if revs else None)
         pending_rev = (revs[-1]['rev'] if revs and (not featured or revs[-1]['rev'] != featured['rev']) else None)
@@ -362,6 +365,8 @@ def collect_models(queue_status):
         has_build_activity = bool(builds) or bool(revs)
         meta_path = os.path.join(mdir, 'model-meta.json')
         meta_ok = False
+        glb_rev = None  # rev the exported GLB actually belongs to (meta records
+                        # the completed/exported rev; may lag the featured rev)
         if os.path.exists(meta_path):
             try:
                 meta = json.load(open(meta_path))
@@ -369,6 +374,7 @@ def collect_models(queue_status):
                 meta_ok = (len(judges) == 3 and
                            all(j.get('pass') and j.get('score', 0) >= 9.0
                                for j in judges))
+                glb_rev = meta.get('rev') or None
             except Exception:
                 pass
         felix_blocked = False
@@ -404,6 +410,7 @@ def collect_models(queue_status):
             'pending_rev': pending_rev,
             'glbs': glbs,
             'latest_glb': glbs[-1] if glbs else None,
+            'glb_rev': glb_rev,  # rev the exported GLB belongs to (None if unknown)
             'scores': scores,
             'all_judges_pass': bool(all_pass),
             'mesh': mesh,
@@ -1021,7 +1028,18 @@ def render_entry(aid, sch, mod):
                     '<tr><td>triangles</td><td>{}</td></tr>'
                     '<tr><td>non-manifold</td><td>{}</td></tr></table>').format(
                 m.get('objects', '—'), m.get('tris', '—'), m.get('nonmanifold_edges', '—'))
-        viewer = (f'<h2>3D viewer &mdash; {esc(g["file"])}</h2>{mesh}'
+        # Label the GLB with the rev it actually belongs to (from model-meta).
+        # If the featured renders are a NEWER rev than the exported GLB, say so
+        # explicitly — the viewer would otherwise silently show older geometry.
+        glb_rev = mod.get('glb_rev')
+        glb_lbl = f' (rev {esc(glb_rev)})' if glb_rev else ''
+        mismatch = ''
+        if glb_rev and rev != '—' and glb_rev != rev:
+            mismatch = (f'<div class="kv" style="margin-top:6px">Renders above '
+                        f'are <b>{esc(rev)}</b>; the 3D viewer loads the last '
+                        f'exported GLB (<b>{esc(glb_rev)}</b>).</div>')
+        viewer = (f'<h2>3D viewer &mdash; {esc(g["file"])}{glb_lbl}</h2>{mesh}'
+                  f'{mismatch}'
                   f'<div id="viewer"></div><div class="kv" id="vstat">loading…</div>'
                   f'<script>const GLB_URL="../assets/models/{aid}/{esc(g["file"])}";</script>'
                   + VIEWER_JS)
