@@ -82,6 +82,20 @@ def mtime_of(path):
         return 0
 
 
+def rev_num(rev):
+    """Numeric revision ordering (bs1 < bs2 < ... < bs10).
+
+    Revision numbers are the authoritative build order. mtime must NOT be
+    used to order revisions: workers legitimately re-render individual views
+    of an OLDER rev for before/after comparison (e.g. 14-bush bs2/front.png
+    re-rendered after bs3 was complete), and mtime ordering then features
+    the older rev — silently moving the dashboard's featured build backwards
+    (Felix 2026-09-15: bs2 re-featured over bs3 by a single re-rendered PNG).
+    """
+    m = re.search(r'(\d+)\s*$', rev or '')
+    return int(m.group(1)) if m else 0
+
+
 def copy_if_newer(src, dst):
     """Copy src->dst only if src is newer/different. Returns True if copied."""
     if not os.path.exists(src):
@@ -320,7 +334,8 @@ def collect_models(queue_status):
                             pngs[f[:-4]] = os.path.join(revp, f)
                 rev_mtime = max([mtime_of(p) for p in pngs.values()] or [0])
                 revs.append({'rev': rev, 'renders': pngs, 'mtime': rev_mtime})
-        revs.sort(key=lambda r: r['mtime'])
+        # Order revisions by NUMBER, not mtime (see rev_num docstring).
+        revs.sort(key=lambda r: rev_num(r['rev']))
         # Featured revision = latest rev with a COMPLETE render set (all 8 views).
         # GLB export happens once per completed build, NOT per rendered rev, so
         # the GLB can lag the featured renders (e.g. a model mid-fix with revs
@@ -340,13 +355,16 @@ def collect_models(queue_status):
                 glbs.append({'file': f, 'mtime': mtime_of(p), 'size': os.path.getsize(p)})
         glbs.sort(key=lambda g: g['mtime'])
         # GLB->rev pairing by disk truth (see comment at featured-rev above):
-        # the GLB belongs to the newest rev fully rendered before its export.
+        # the GLB belongs to the highest-numbered rev fully rendered before its
+        # export. Rev number breaks ties/time-inversions: a stray re-render of
+        # an old rev must not steal the GLB pairing (same mtime-vs-number bug
+        # as featured-rev above, fixed the same way).
         glb_rev = None
         if glbs and revs:
             gmt = glbs[-1]['mtime']
             cands = [r for r in revs if r['mtime'] <= gmt]
             if cands:
-                glb_rev = max(cands, key=lambda r: r['mtime'])['rev']
+                glb_rev = max(cands, key=lambda r: rev_num(r['rev']))['rev']
         scores = {}
         qa_logs = []
         for f in sorted(os.listdir(mdir)):
