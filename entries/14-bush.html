@@ -120,9 +120,41 @@ border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;disp
 <h1>14-bush</h1><div class="sub">Bush</div>
 <div class="stages" style="margin:10px 0"><span class="stage ok">Schematics ✓</span><span class="stage work">3D modeling · 1 revs (idle)</span></div>
 
-<div class="kv">last updated <b>2026-09-15 11:42 PDT</b> &middot; <span id="notesCount">0</span> review notes on this asset</div>
+<div class="kv">last updated <b>2026-09-15 11:47 PDT</b> &middot; <span id="notesCount">0</span> review notes on this asset</div>
 <div class="outstanding clear"><div class="otitle">Outstanding feedback (0)</div><div class="oclear">None &mdash; every flagged defect is resolved. If the model is still in progress, it is awaiting judge verdicts, not fixes.</div></div>
-
+<h2>3D viewer &mdash; 14-bush.glb (rev bs1)</h2><div id="viewer"></div><div class="kv" id="vstat">loading…</div><script>const GLB_URL="../assets/models/14-bush/14-bush.glb";</script>
+<script type="importmap">
+{"imports":{"three":"https://unpkg.com/three@0.160.0/build/three.module.js",
+"three/addons/":"https://unpkg.com/three@0.160.0/examples/jsm/"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import {GLTFLoader} from 'three/addons/loaders/GLTFLoader.js';
+import {OrbitControls} from 'three/addons/controls/OrbitControls.js';
+const el=document.getElementById('viewer');
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(el.clientWidth,420);
+renderer.outputColorSpace=THREE.SRGBColorSpace;
+el.appendChild(renderer.domElement);
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x0d1117);
+const cam=new THREE.PerspectiveCamera(45,el.clientWidth/420,0.01,100);
+cam.position.set(3.2,2.2,3.2);
+const ctl=new OrbitControls(cam,renderer.domElement);
+scene.add(new THREE.HemisphereLight(0xffffff,0x334455,1.1));
+const d=new THREE.DirectionalLight(0xfff2dd,2.2);d.position.set(4,6,3);scene.add(d);
+const d2=new THREE.DirectionalLight(0x88aaff,0.7);d2.position.set(-4,3,-3);scene.add(d2);
+new GLTFLoader().load(GLB_URL,g=>{
+  const o=g.scene;scene.add(o);
+  const b=new THREE.Box3().setFromObject(o),c=b.getCenter(new THREE.Vector3()),s=b.getSize(new THREE.Vector3());
+  const m=Math.max(s.x,s.y,s.z);cam.position.set(c.x+m*1.1,c.y+m*0.8,c.z+m*1.1);
+  ctl.target.copy(c);ctl.update();
+  document.getElementById('vstat').textContent='loaded ✓ drag to orbit · scroll to zoom';
+},undefined,e=>{document.getElementById('vstat').textContent='failed to load GLB';});
+(function loop(){requestAnimationFrame(loop);ctl.update();renderer.render(scene,cam);})();
+addEventListener('resize',()=>{renderer.setSize(el.clientWidth,420);
+cam.aspect=el.clientWidth/420;cam.updateProjectionMatrix();});
+</script>
 <h2 id="review">Review &mdash; render vs schematic</h2>
 <div class="reviewbar">
 <div class="toggle on" id="reviewToggle"><div class="pill"></div><span>Review mode</span></div>
@@ -138,7 +170,7 @@ border:1px solid var(--border);border-radius:8px;padding:8px;font-size:12px;disp
 <h2>Notes on this asset</h2>
 <div class="notes" id="notesList"></div>
 </div>
-<script>var VIEWS_DATA={"front": {"render": "../assets/models/14-bush/renders/bs1/front.png", "schematic": "../assets/schematics/14-bush/front.jpg"}, "back": {"render": null, "schematic": "../assets/schematics/14-bush/back.jpg"}, "left": {"render": null, "schematic": "../assets/schematics/14-bush/left.jpg"}, "right": {"render": null, "schematic": "../assets/schematics/14-bush/right.jpg"}, "top": {"render": null, "schematic": "../assets/schematics/14-bush/top.jpg"}, "bottom": {"render": null, "schematic": "../assets/schematics/14-bush/bottom.jpg"}, "angle-front-right": {"render": null, "schematic": "../assets/schematics/14-bush/angle-front-right.jpg"}, "angle-back-left": {"render": null, "schematic": "../assets/schematics/14-bush/angle-back-left.jpg"}};</script>
+<script>var VIEWS_DATA={"front": {"render": "../assets/models/14-bush/renders/bs1/front.png", "schematic": "../assets/schematics/14-bush/front.jpg"}, "back": {"render": "../assets/models/14-bush/renders/bs1/back.png", "schematic": "../assets/schematics/14-bush/back.jpg"}, "left": {"render": "../assets/models/14-bush/renders/bs1/left.png", "schematic": "../assets/schematics/14-bush/left.jpg"}, "right": {"render": "../assets/models/14-bush/renders/bs1/right.png", "schematic": "../assets/schematics/14-bush/right.jpg"}, "top": {"render": "../assets/models/14-bush/renders/bs1/top.png", "schematic": "../assets/schematics/14-bush/top.jpg"}, "bottom": {"render": "../assets/models/14-bush/renders/bs1/bottom.png", "schematic": "../assets/schematics/14-bush/bottom.jpg"}, "angle-front-right": {"render": "../assets/models/14-bush/renders/bs1/angle-front-right.png", "schematic": "../assets/schematics/14-bush/angle-front-right.jpg"}, "angle-back-left": {"render": "../assets/models/14-bush/renders/bs1/angle-back-left.png", "schematic": "../assets/schematics/14-bush/angle-back-left.jpg"}};</script>
 <script>
 (function(){
 var KEY='cb_feedback_v1';
