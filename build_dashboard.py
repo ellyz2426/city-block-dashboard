@@ -1177,6 +1177,17 @@ def render_entry(aid, sch, mod):
 # ----------------------------------------------------------------- main ---
 
 def main():
+    # PACK integrity guard (added 2026-09-16 by dashboard-publisher):
+    # if the pack directory is unreachable, the scan below would produce
+    # 0 entries and the run would overwrite the live dashboard with an
+    # empty site. Bail out quietly instead; the 2-min pipeline sync owns
+    # the PACK UNREACHABLE alert. Remove this guard once the pack is back.
+    if not (os.path.isdir(PACK)
+            and os.path.isdir(os.path.join(PACK, 'schematics'))
+            and os.path.isdir(os.path.join(PACK, 'models'))
+            and os.path.isfile(os.path.join(PACK, 'lease.py'))):
+        print('PACK unreachable — skipping regeneration to protect live site')
+        return
     t0 = datetime.now(timezone.utc)
     queue_status = {}
     try:
