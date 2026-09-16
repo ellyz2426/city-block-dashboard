@@ -355,32 +355,32 @@ def collect_models(queue_status):
                 glbs.append({'file': f, 'mtime': mtime_of(p), 'size': os.path.getsize(p)})
         glbs.sort(key=lambda g: g['mtime'])
         # GLB->rev pairing by disk truth (see comment at featured-rev above):
-        # the GLB belongs to the rev whose render window it was exported from.
-        # Pair by nearest render window: the export lands inside (or nearest
-        # to) the [min,max] PNG-mtime window written by the same build-script
-        # run. Prefer a window containing the GLB mtime; break remaining ties
-        # by higher rev number (a stray re-render of an old rev widens that
-        # rev's window but must not steal the pairing). The old rule — newest
-        # rev with max render mtime <= GLB mtime — mislabeled 18-produce-crates
-        # (overseer 2026-09-16): its bs2 export at 20:03 landed 1 min before
-        # the final bs2 PNG at 20:04, so the bs2 GLB was wrongly called bs1.
+        # the GLB belongs to the rev whose render run produced it. The
+        # pipeline renders all 8 views then exports the GLB in ONE build-
+        # script run, so the true rev is the one with the most PNGs rendered
+        # in the run window just before the export (15 min back, 2 min forward
+        # grace for an export landing just before the final PNG). Counting
+        # fresh PNGs — not [min,max] windows or max-mtime cutoffs — defeats
+        # both observed failure modes: (a) 18-produce-crates, where the bs2
+        # export at 20:03 landed 1 min before the last bs2 PNG at 20:04 and
+        # the old max-mtime rule wrongly called it bs1; (b) 14-bush, where a
+        # stray bs2 before/after re-render at 13:02-13:03 widened bs2's window
+        # to cover the bs4 export at 13:03 and a window rule wrongly called
+        # the bs4 GLB bs2. Ties (full re-render of an old rev) break toward
+        # the higher rev number.
         glb_rev = None
         if glbs and revs:
             gmt = glbs[-1]['mtime']
             best = None
             best_key = None
             for r in revs:
-                ms = [mtime_of(p) for p in r['renders'].values()]
-                if not ms:
-                    continue
-                lo, hi = min(ms), max(ms)
-                inside = lo <= gmt <= hi
-                dist = 0 if inside else min(abs(gmt - lo), abs(gmt - hi))
-                key = (0 if inside else 1, dist, -rev_num(r['rev']))
-                if best_key is None or key < best_key:
+                fresh = sum(1 for p in r['renders'].values()
+                            if gmt - 900 <= mtime_of(p) <= gmt + 120)
+                key = (fresh, rev_num(r['rev']))
+                if best_key is None or key > best_key:
                     best_key = key
                     best = r['rev']
-            glb_rev = best
+            glb_rev = best if (best_key and best_key[0] > 0) else None
         scores = {}
         qa_logs = []
         for f in sorted(os.listdir(mdir)):
