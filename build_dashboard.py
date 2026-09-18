@@ -433,15 +433,36 @@ def collect_models(queue_status):
                         felix_blocked = True
             except Exception:
                 pass
+        # 2026-09-18 (overseer): model-meta.json's queue_note is also a
+        # canonical defect record (e.g. 05-sedan-car "blobby" OPEN defect lives
+        # only in queue_note; its QA log was lost in the 2026-09-16 deletion).
+        # Without this, a model with 3 PASS judges + GLB would show Accepted
+        # despite an open Felix defect.
+        try:
+            note = (meta or {}).get('queue_note', '') or ''
+            if 'Felix-flagged defect' in note:
+                last_flag = note.rfind('Felix-flagged defect')
+                after = note[last_flag:]
+                if 'resolved' not in after.lower() and 'fixed in' not in after.lower():
+                    felix_blocked = True
+        except Exception:
+            pass
         qs = queue_status.get(mid, '')
         live_active = (live_model == mid and live_phase not in ('', 'idle'))
-        if live_active or qs in ('building', 'judging', 'fixing', 'rendering', 'in_progress'):
+        if live_active:
             status = 'in_progress'
         elif felix_blocked:
             status = 'in_progress'
         elif qs == 'complete' or (glbs and meta_ok):
+            # 2026-09-18 (overseer): completed judge evidence now beats a stale
+            # queue phase string. Previously `qs in (..., 'in_progress')` came
+            # first, so every finished model showed "3D modeling (in progress)"
+            # on the dashboard from its verdicts landing until the tick's
+            # queue-write pass. live_active (a worker actually on this model)
+            # still forces in_progress; felix_blocked stays ahead of finished.
             status = 'finished'
-        elif has_build_activity:
+        elif qs in ('building', 'judging', 'fixing', 'rendering', 'in_progress') \
+                or has_build_activity:
             status = 'in_progress'
         else:
             status = qs or 'pending'
