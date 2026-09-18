@@ -36,7 +36,7 @@ except ImportError:
 # ---------------------------------------------------------------- paths ---
 
 HOME = '/home/hatch'
-PACK = f'{HOME}/workspace/your_files/city-block-asset-pack'
+PACK = f'{HOME}/workspace/goals/unified-low-poly-3d-asset-library/files/city-block-asset-pack'
 OUT = f'{HOME}/workspace/city-block-dashboard'
 HIDDEN = f'{HOME}/workspace/goals/unified-low-poly-3d-asset-library/hidden_files'
 
