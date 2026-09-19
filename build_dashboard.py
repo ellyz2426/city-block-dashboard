@@ -262,11 +262,12 @@ def feedback_states(text):
                 events.append(('resolve', rname, '', r, rsrc,
                                am.group(1).lower() if am else ''))
             continue
-        m = re.search(
-            r'[\[\(]?((?:Felix|Judge)-flagged defect)\b[\]\)]?:?\s*(.+)', line)
+        m = re.search(r'[\[\(]?((?:Felix|Judge)-flagged defect)\b', line)
+        if m and not re.match(r'\s*[\]\)]|:', line[m.end():]):
+            m = None  # e.g. "defect lines" prose — not a defect marker
         if m:
             fsrc = 'felix' if m.group(1).startswith('Felix') else 'judge'
-            d = m.group(2).strip()
+            d = re.sub(r'^[\]\)\s:]*', '', line[m.end():]).strip()
             name = re.split(r'\s+—\s+', d)[0].split('(')[0].strip().lower()
             rm = re.search(r'\b([a-z]{2}\d+)\b', d)
             frev = rm.group(1) if rm else section_rev
