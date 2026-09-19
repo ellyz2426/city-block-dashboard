@@ -214,24 +214,40 @@ def feedback_states(text):
     """Order-aware tracking for Felix-flagged AND Judge-flagged defects
     (mirrors model_audit._feedback_states).
 
+    Accepts all worker formats seen in the wild:
+      flag:    `Judge-flagged defect: <desc>` (canonical),
+               `(Judge-flagged defect): <desc>`,
+               `[Judge-flagged defect] <desc>` (square-bracket drift, 2026-09-19)
+      resolve: `RESOLVED (Judge-flagged defect): <desc>` (canonical),
+               `RESOLVED [Judge-flagged defect]: <desc>`,
+               `[Judge-flagged defect resolved] <desc>` (square-bracket drift)
+    A resolve claiming "ALL <rev> ... RESOLVED" additionally closes every
+    same-source flag whose rev matches <rev> (flags inherit the rev from
+    their `## ... defects — bsN` section header when their own line names none).
+
     Returns (outstanding, resolved), both newest-first: outstanding
     [(name, rev, full, source)], resolved [(name, resolved_in_rev, source)].
     """
     events = []
     rawlines = text.splitlines()
+    section_rev = ""
     for i, line in enumerate(rawlines):
-        m = re.search(r'((?:Felix|Judge)-flagged defect):\s*(.+)', line)
-        if m:
-            fsrc = 'felix' if m.group(1).startswith('Felix') else 'judge'
-            d = m.group(2).strip()
-            name = re.split(r'\s+—\s+', d)[0].split('(')[0].strip().lower()
-            rm = re.search(r'\b([a-z]{2}\d+)\b', d)
-            if name:
-                events.append(('flag', name, rm.group(1) if rm else '', d,
-                               fsrc))
-            continue
-        m = re.search(r'RESOLVED\s*\(((?:Felix|Judge)-flagged defect)\):\s*(.+)',
-                      line)
+        # Track "## Judge-flagged defects — bsN" headers so flags that don't
+        # name a rev in their own line inherit the section rev.
+        if line.lstrip().startswith("#"):
+            sm = re.search(r"flagged defects\s+[—–-]\s*([a-z]{2}\d+)\b",
+                           line, re.I)
+            if sm:
+                section_rev = sm.group(1).lower()
+        # Resolve lines first: the broadened flag pattern would otherwise
+        # swallow the square-bracket "[X-flagged defect resolved]" form.
+        m = re.search(
+            r"RESOLVED\s*[\[\(]?((?:Felix|Judge)-flagged defect)[\]\)]?:?\s*(.+)",
+            line)
+        if not m:
+            m = re.search(
+                r"[\[\(]((?:Felix|Judge)-flagged defect)\s+resolved[\]\)]:?\s*(.+)",
+                line, re.I)
         if m:
             rsrc = 'felix' if m.group(1).startswith('Felix') else 'judge'
             r = m.group(2).strip()
@@ -241,10 +257,24 @@ def feedback_states(text):
             if '<name>' in r:
                 continue  # instruction template, not a real resolution
             rname = re.split(r'\s+—\s+', r)[0].split('(')[0].strip().lower()
+            am = re.search(r'\ball\s+([a-z]{2}\d+)\b.*\bresolved\b', r, re.I)
             if rname:
-                events.append(('resolve', rname, '', r, rsrc))
+                events.append(('resolve', rname, '', r, rsrc,
+                               am.group(1).lower() if am else ''))
+            continue
+        m = re.search(
+            r'[\[\(]?((?:Felix|Judge)-flagged defect)\b[\]\)]?:?\s*(.+)', line)
+        if m:
+            fsrc = 'felix' if m.group(1).startswith('Felix') else 'judge'
+            d = m.group(2).strip()
+            name = re.split(r'\s+—\s+', d)[0].split('(')[0].strip().lower()
+            rm = re.search(r'\b([a-z]{2}\d+)\b', d)
+            frev = rm.group(1) if rm else section_rev
+            if name:
+                events.append(('flag', name, frev, d, fsrc, ''))
+            continue
     state, seq = {}, 0
-    for kind, name, rev, full, fsrc in events:
+    for kind, name, rev, full, fsrc, allrev in events:
         seq += 1
         key = (fsrc, name)
         if kind == 'flag':
@@ -257,7 +287,8 @@ def feedback_states(text):
             for (s, n) in list(state):
                 ent = state[(s, n)]
                 if ent[0] == 'flag' and s == fsrc and (
-                        n == name or n in name or name in n):
+                        n == name or n in name or name in n
+                        or (allrev and ent[1] == allrev)):
                     rm = re.search(r'fixed in\s+([a-z]{2}\d+)', full, re.I)
                     state[(s, n)] = ['resolved', ent[1], ent[2],
                                      rm.group(1) if rm else '', seq, fsrc]
